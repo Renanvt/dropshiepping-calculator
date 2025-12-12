@@ -1,0 +1,166 @@
+import { test, expect } from '@playwright/test';
+
+test('Verify Latest Features: Discount/Acréscimo, Packaging Cost, and Variations', async ({ page }) => {
+  await page.goto('http://localhost:5179');
+
+  // 1. Test Packaging Cost and Total Cost Logic
+  // Set Product Cost = 100
+  // Note: Default marketplace is now Mercado Livre, change to Shopee for this specific calculation if needed, 
+  // but let's stick to defaults and adapt expectations.
+  // Default: Mercado Livre, Classico (11.5-14.5% + fee).
+  // Actually, to match the previous test logic which assumed Shopee, let's switch to Shopee first.
+  
+  const marketplaceTrigger = page.getByRole('combobox').filter({ hasText: 'Mercado Livre' });
+  if (await marketplaceTrigger.isVisible()) {
+      await marketplaceTrigger.click();
+      await page.getByRole('option', { name: 'Shopee' }).click();
+  }
+
+  await page.fill('input[id="costPrice"]', '100');
+  
+  // Set Packaging Cost = 10
+  // Need to find the input for packaging cost. It has placeholder "0.00" and is near the label "Custos embalagem..."
+  await page.fill('input[id="packagingCost"]', '10');
+  
+  // Check "Custos Embalagem" row
+  // Now it should show ONLY the packaging cost as negative: "- R$ 10.00"
+  await expect(page.getByText('Custos Embalagem', { exact: true })).toBeVisible();
+  await expect(page.getByText('- R$ 10.00')).toBeVisible();
+  
+  // Suggested Price Calculation (Markup 1.5x on 110 (100+10) = 165)
+  // Fees on 165: Shopee 20% + 4 (Standard with Free Shipping)
+  // 165 * 0.20 = 33 + 4 = 37.
+  // Net Revenue = 165 - 37 - 110 = 18.
+  
+  await expect(page.locator('p.text-4xl')).toContainText('R$ 165.00');
+
+  // 2. Test "Acréscimo Aplicado" Label
+  // Manual Price = 200 (Suggested is 165, so 35 more)
+  // Use specific locator for Manual Price input
+  await page.fill('input[id="manualSellingPrice"]', '200');
+
+  // Check for "Acréscimo Aplicado"
+  // Logic: Manual (200) > Suggested (165) => Diff = -35 (Negative) => Acréscimo.
+  await expect(page.getByText('Acréscimo Aplicado')).toBeVisible();
+  
+  // Check value difference: 200 - 165 = 35.00
+  // It should be visible as "R$ 35.00"
+  await expect(page.getByText('R$ 35.00')).toBeVisible();
+
+  // Test "Desconto Aplicado" (Manual < Suggested)
+  await page.fill('input[id="manualSellingPrice"]', '150'); // Less than 165
+  // Diff = 150 - 165 = -15. Wait.
+  // Logic in code: discountApplied = manual - suggested? No.
+  // Code: manualPriceVal > 0 ? suggestedPrice - manualPriceVal : 0;
+  // So: 165 - 150 = +15. (Positive).
+  // Positive => 'Desconto Aplicado'.
+  await expect(page.getByText('Desconto Aplicado')).toBeVisible();
+  await expect(page.getByText('R$ 15.00')).toBeVisible();
+
+  // 3. Test Tax Description Marketplace Name
+  // Should see "(Tarifa Fixa Shopee)"
+  await expect(page.getByText('(Tarifa Fixa Shopee)')).toBeVisible();
+
+  // Switch to Mercado Livre
+  // Use filter to find the specific combobox with text 'Shopee' (current value)
+  // Note: We switched to Shopee at the start of test, so it is 'Shopee' now.
+  const marketplaceSelect = page.getByRole('combobox').filter({ hasText: 'Shopee' });
+  await marketplaceSelect.click();
+  await expect(page.getByRole('option', { name: 'Mercado Livre' })).toBeVisible();
+  await page.getByRole('option', { name: 'Mercado Livre' }).click();
+  
+  // Should see "(Tarifa Fixa Mercado Livre)" if fixed fee applies
+  // Cost 110 -> Price ~165. > 79, so Fixed Fee is 0. 
+  // Let's lower cost to trigger fixed fee. Cost = 20. Total = 30.
+  await page.fill('input[id="costPrice"]', '20');
+  // Price ~45. Fixed Fee applies (6.50 for 29-50 range).
+  await expect(page.getByText('(Tarifa Fixa Mercado Livre)')).toBeVisible();
+
+  // 4. Test Variations
+  // Enable variations
+  await page.getByLabel('É produto com variação?').check();
+  
+  // Add a variation
+  await page.fill('input[placeholder="Variação (ex: P)"]', 'Var A');
+  await page.fill('input[placeholder="Custo (R$)"]', '50');
+  await page.fill('input[placeholder="Markup"]', '2');
+  await page.getByRole('button', { name: 'Adicionar Variação' }).click();
+  
+  // Check if variation result card appears
+  await expect(page.getByText('Resultados das Variações')).toBeVisible();
+  // 'Var A' appears in the table (Main Card) AND the result card. 
+  // Use filter to find the specific result card which has "Preço de Venda Sugerido".
+  const varCard = page.locator('.shadow-xl').filter({ hasText: 'Preço de Venda Sugerido' }).filter({ hasText: 'Var A' });
+  await expect(varCard).toBeVisible();
+
+  // Cost 50 + Pkg 10 = 60. Markup 2.0 -> Price 120.
+  // Check Suggested Price in variation card
+  await expect(varCard.getByText('R$ 120.00')).toBeVisible();
+
+  // Variation Total Cost: 50 + 10 (pkg) = 60.
+  await expect(varCard.getByText('Custo Total')).toBeVisible();
+  await expect(varCard.getByText('R$ 60.00')).toBeVisible();
+
+  // 5. Test Profit Table
+  await expect(page.getByText('Projeção de Lucro')).toBeVisible();
+  await expect(page.getByText('Unidades Vendidas')).toBeVisible();
+  await expect(page.getByText('Lucro Estimado')).toBeVisible();
+});
+
+test('Verify Shopee Extra Commission and Low Price Fee', async ({ page }) => {
+  await page.goto('http://localhost:5179');
+  
+  // 1. Test Extra Commission
+  // Note: Default marketplace is Mercado Livre. We must switch to Shopee to see "Comissões Extras" input.
+  const marketplaceTrigger = page.getByRole('combobox').filter({ hasText: 'Mercado Livre' });
+  if (await marketplaceTrigger.isVisible()) {
+      await marketplaceTrigger.click();
+      await page.getByRole('option', { name: 'Shopee' }).click();
+  }
+
+  // Set Cost 100
+  await page.fill('input[id="costPrice"]', '100');
+  
+  // Check Suggested Price (Markup 1.5x default)
+  // Suggested Price = 100 * 1.5 = 150.00.
+  await expect(page.locator('p.text-4xl')).toContainText('R$ 150.00');
+  
+  // Now add Extra Commission 10%
+  // Find input by placeholder "0" which is inside the "Comissões Extras" block or use specific locator if possible.
+  // The input is near "Comissões Extras (%)".
+  // Let's use getByPlaceholder('0') but be careful.
+  // Or better, calculate input index or use label.
+  // The label is "Comissões Extras (%)".
+  // The input is in a div following the label?
+  // Let's try filling by placeholder "0" (it's the only one with just "0" probably, others are "0,00" or "0.00").
+  await page.fill('input[placeholder="0"]', '10');
+  
+  // Check Tax Description
+  // Should see "+ 10% (Extra)"
+  await expect(page.getByText('10% (Extra)')).toBeVisible();
+  
+  // Check Marketplace Fee Calculation
+  // Standard Shopee: 14% + 6% = 20%.
+  // With Extra: 20% + 10% = 30%.
+  // 30% of 150 = 45.00.
+  // Verify "Taxa Marketplace (30%)"
+  await expect(page.getByText('Taxa Marketplace (30%)')).toBeVisible();
+  // Verify value "- R$ 45.00"
+  await expect(page.getByText('- R$ 45.00')).toBeVisible();
+
+  // 2. Test Low Price Fee (< R$8)
+  // Clear inputs by reloading
+  await page.reload();
+  
+  // Set Cost 2.00
+  await page.fill('input[id="costPrice"]', '2');
+  // Markup 1.5 -> Price 3.00.
+  
+  // Check Suggested Price
+  await expect(page.locator('p.text-4xl')).toContainText('R$ 3.00');
+  
+  // Fixed Fee Calculation
+  // Price < 8, so Fixed Fee = 50% of Price = 1.50.
+  // Check "Taxa Fixa" row value
+  await expect(page.getByText('- R$ 1.50')).toBeVisible();
+});

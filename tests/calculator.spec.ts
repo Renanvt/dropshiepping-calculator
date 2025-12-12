@@ -14,19 +14,24 @@ test('Dropshipping Calculator Functionality with Shadcn UI', async ({ page }) =>
   // Shadcn Input is a standard input, can use fill
   await page.fill('input[id="costPrice"]', '50');
 
-  // 4. Verify panel color change (to green gradient)
-  await expect(resultCard).toHaveClass(/bg-gradient-to-br/);
-  await expect(resultCard).toHaveClass(/from-green-600/);
-  await expect(resultCard).toHaveClass(/to-emerald-600/);
+  // 4. Verify panel color change (to vibrant pink)
+  await expect(resultCard).toHaveClass(/bg-\[#d91c42\]/);
 
   // 5. Test Marketplace Selection (Shadcn Select)
   // Initially Shopee. Change to Mercado Livre then back to Shopee to test interaction?
   // Or just verify Shopee elements are present.
-  // Let's test interaction: Open Marketplace Select
-  // The label is "Marketplace", the trigger is below it.
-  const marketplaceTrigger = page.locator('button[role="combobox"]').filter({ hasText: 'Shopee' }).first();
+  // Let's test interaction: Open// 5. Test Marketplace Selection (Shadcn Select)
+  // Initially, it is 'Mercado Livre' (based on recent defaults update)
+  const marketplaceTrigger = page.locator('button[role="combobox"]').filter({ hasText: 'Mercado Livre' }).first();
   await expect(marketplaceTrigger).toBeVisible();
+
+  // Change to Shopee for further tests (since original tests assumed Shopee defaults)
+  await marketplaceTrigger.click();
+  await page.getByRole('option', { name: 'Shopee' }).click();
   
+  // Now verify it is Shopee
+  const shopeeTrigger = page.locator('button[role="combobox"]').filter({ hasText: 'Shopee' }).first();
+  await expect(shopeeTrigger).toBeVisible();
   // 6. Test Category Selection (Shadcn Select)
   // Label "Categoria (Estimativa de CPC)"
   // Trigger should show "Eletrônicos" initially
@@ -42,20 +47,25 @@ test('Dropshipping Calculator Functionality with Shadcn UI', async ({ page }) =>
   await adsCheckbox.click();
 
   // 8. Verify Inputs update based on category
-  // Moda: CPC 0.35, CR 2.5
-  // We need to wait a bit for state update if necessary, but React is fast.
-  // We look for inputs inside the ads section.
-  // We can find them by value or placeholder.
-  const cpcInput = page.locator('input[placeholder="0.40"]'); // Placeholder is static, value changes
-  const crInput = page.locator('input[placeholder="1.5"]');
-
+  // Moda: CPC 0.35
+  const cpcInput = page.locator('input[placeholder="0.40"]'); 
   await expect(cpcInput).toHaveValue('0.35');
-  await expect(crInput).toHaveValue('2.5');
+
+  // Fill Budget and Sales to calculate CPA
+  const budgetInput = page.locator('input[placeholder="10.00"]');
+  await budgetInput.fill('20');
+  
+  const salesInput = page.locator('input[placeholder="0"]').first(); // Might be multiple inputs with 0 placeholder, need to be careful.
+  // The sales input is inside the ads section.
+  // Let's use a better selector if possible or rely on order.
+  // The structure is: CPC, Budget, Sales.
+  // Or label "Quantidade de Vendas (Para Cálculo de CR)"
+  await page.getByLabel('Quantidade de Vendas (Para Cálculo de CR)').fill('2');
 
   // 9. Verify CPA Calculation
-  // CPC 0.35 / (2.5% / 100) = 14.00
+  // Budget 20 / Sales 2 = 10.00
   await expect(page.getByText('CPA (Custo por Aquisição)')).toBeVisible();
-  await expect(page.getByText('R$ 14.00', { exact: true })).toBeVisible();
+  await expect(page.getByText('R$ 10.00', { exact: true })).toBeVisible();
 
   // 10. Verify Mercado Livre Table
   await expect(page.getByText('Tabela de Margem Recomendada (Mercado Livre)')).toBeVisible();

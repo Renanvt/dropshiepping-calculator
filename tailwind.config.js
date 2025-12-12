@@ -7,6 +7,10 @@ export default {
   ],
   theme: {
   	extend: {
+      fontFamily: {
+        sans: ['Oxanium', 'sans-serif'],
+        iceland: ['Iceland', 'sans-serif'],
+      },
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
