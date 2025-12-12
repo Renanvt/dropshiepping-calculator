@@ -1,5 +1,11 @@
 import { useState, useMemo } from 'react';
 import { Calculator, TrendingUp, Package, DollarSign, AlertCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface TaxRate {
   rate: number;
@@ -20,6 +26,36 @@ const DropshippingCalculator = () => {
   const [category, setCategory] = useState('eletronicos');
   const [shippingOption, setShippingOption] = useState('with'); // Para Shopee
   const [adType, setAdType] = useState('premium'); // Para Mercado Livre
+  const [useShopeeAds, setUseShopeeAds] = useState(false);
+  const [adsCPC, setAdsCPC] = useState('');
+  const [adsConversionRate, setAdsConversionRate] = useState('1.5');
+
+  // Categorias Shopee com CPC estimado (baseado em médias de mercado Brasil 2024/25)
+  const shopeeCategories: Record<string, { name: string; avgCPC: number; avgCR: number }> = {
+    eletronicos: { name: 'Eletrônicos', avgCPC: 0.45, avgCR: 1.2 },
+    moda: { name: 'Moda e Acessórios', avgCPC: 0.35, avgCR: 2.5 },
+    casa: { name: 'Casa e Decoração', avgCPC: 0.40, avgCR: 1.8 },
+    beleza: { name: 'Beleza e Cuidados', avgCPC: 0.38, avgCR: 2.2 },
+    celulares: { name: 'Celulares e Acessórios', avgCPC: 0.55, avgCR: 1.0 },
+    informatica: { name: 'Informática', avgCPC: 0.50, avgCR: 1.1 },
+    esportes: { name: 'Esportes e Lazer', avgCPC: 0.42, avgCR: 1.5 },
+    brinquedos: { name: 'Brinquedos', avgCPC: 0.30, avgCR: 2.0 },
+    papelaria: { name: 'Papelaria', avgCPC: 0.25, avgCR: 2.8 },
+    automotivo: { name: 'Automotivo', avgCPC: 0.48, avgCR: 1.3 }
+  };
+
+  // Handler para mudança de categoria Shopee
+  const handleShopeeCategoryChange = (cat: string) => {
+    setCategory(cat);
+    // Sugere CPC e CR baseados na categoria se os campos estiverem vazios ou com valores padrão
+    // @ts-ignore
+    const catData = shopeeCategories[cat];
+    if (catData) {
+       // Sempre atualiza os inputs quando a categoria muda, para refletir a nova estimativa
+       setAdsCPC(catData.avgCPC.toString());
+       setAdsConversionRate(catData.avgCR.toString());
+    }
+  };
 
   // Taxas reais do Shopee (atualizadas 2024)
   const shopeeTaxes = {
@@ -98,15 +134,39 @@ const DropshippingCalculator = () => {
     let marketplaceFee = 0;
     let fixedFee = 0;
     let taxDescription = '';
+    let adsCostPerSale = 0;
 
     if (marketplace === 'shopee') {
-      const tax = shippingOption === 'with' 
-        ? shopeeTaxes.withFreeShipping 
-        : shopeeTaxes.withoutFreeShipping;
+      const standardCommission = 14; // Base 14% (12% comissão + 2% transação)
+      const freeShippingFee = 6;
+      const transactionFee = 2; // For display/calculation logic split if needed, but standard is 14% total base
       
-      marketplaceFee = tax.base;
-      fixedFee = cost < 79 ? tax.fixed : 0;
-      taxDescription = tax.description;
+      // User requested breakdown: Transaction (2%), Fixed (R$4), Free Shipping (+6%)
+      // If we treat 14% as the base "Comissão + Transação", and Free Shipping adds 6%.
+      // Let's assume the user considers "Transaction Fee" (2%) as part of the 14%.
+      // So Commission = 12%, Transaction = 2%. Total = 14%.
+      // If Free Shipping is ON, add 6%. Total = 20%.
+      
+      const hasFreeShipping = shippingOption === 'with';
+      const totalRate = standardCommission + (hasFreeShipping ? freeShippingFee : 0);
+      
+      marketplaceFee = totalRate;
+      fixedFee = cost < 79 ? 4 : 0; // Taxa fixa R$4
+      
+      taxDescription = hasFreeShipping 
+        ? '14% (Comissão) + 6% (Frete Grátis) + R$4' 
+        : '12% (Comissão) + 2% (Transação) + R$4';
+
+      // Cálculo de Ads
+      if (useShopeeAds) {
+        const cpc = parseFloat(adsCPC) || 0;
+        const cr = parseFloat(adsConversionRate) || 1.5;
+        // Custo por Venda = CPC / (Taxa de Conversão / 100)
+        // Ex: R$ 0.50 CPC / 1% CR = R$ 50.00 CPA
+        if (cr > 0) {
+          adsCostPerSale = cpc / (cr / 100);
+        }
+      }
     } else {
       const categoryTaxes = mercadoLivreTaxes[adType];
       const tax = categoryTaxes[category];
@@ -131,11 +191,17 @@ const DropshippingCalculator = () => {
     const recommendedMargin = getRecommendedMargin(cost);
     
     // Cálculo do preço de venda sugerido
-    const suggestedPrice = cost / (1 - (marketplaceFee + recommendedMargin) / 100) + fixedFee;
+    const suggestedPrice = (cost + fixedFee + adsCostPerSale) / (1 - (marketplaceFee + recommendedMargin) / 100);
     
     // Cálculo reverso para verificar
-    const marketplaceCost = (suggestedPrice - fixedFee) * (marketplaceFee / 100);
-    const netRevenue = suggestedPrice - marketplaceCost - fixedFee - cost;
+    // Limite de comissão da Shopee é R$ 100 (apenas a parte percentual)
+    let calculatedCommission = suggestedPrice * (marketplaceFee / 100);
+    if (marketplace === 'shopee' && calculatedCommission > 100) {
+       calculatedCommission = 100;
+    }
+
+    const marketplaceCost = calculatedCommission;
+    const netRevenue = suggestedPrice - marketplaceCost - fixedFee - adsCostPerSale - cost;
     const actualMargin = (netRevenue / suggestedPrice) * 100;
 
     return {
@@ -144,13 +210,14 @@ const DropshippingCalculator = () => {
       marketplaceFee: marketplaceFee.toFixed(0),
       marketplaceCost: marketplaceCost.toFixed(2),
       fixedFee: fixedFee.toFixed(2),
-      totalFees: (marketplaceCost + fixedFee).toFixed(2),
+      adsCostPerSale: adsCostPerSale.toFixed(2),
+      totalFees: (marketplaceCost + fixedFee + adsCostPerSale).toFixed(2),
       netRevenue: netRevenue.toFixed(2),
       actualMargin: actualMargin.toFixed(1),
       recommendedMargin,
       taxDescription
     };
-  }, [costPrice, marketplace, category, shippingOption, adType]);
+  }, [costPrice, marketplace, category, shippingOption, adType, useShopeeAds, adsCPC, adsConversionRate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-rose-50 p-4 md:p-8">
@@ -169,27 +236,27 @@ const DropshippingCalculator = () => {
 
         <div className="grid md:grid-cols-2 gap-6">
           {/* Painel de Entrada */}
-          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-            <div className="flex items-center gap-2 mb-6">
+          <Card className="shadow-xl border-gray-100">
+            <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
               <Calculator className="w-6 h-6 text-blue-600" />
-              <h2 className="text-2xl font-bold text-gray-800">Dados do Produto</h2>
-            </div>
-
-            <div className="space-y-5">
+              <CardTitle className="text-2xl font-bold text-gray-800">Dados do Produto</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5 pt-4">
               {/* Preço de Custo */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-2">
+              <div className="grid w-full max-w-sm items-center gap-1.5">
+                <Label htmlFor="costPrice" className="text-sm font-semibold text-gray-800">
                   Preço de Custo do Fornecedor
-                </label>
+                </Label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-600 font-semibold">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
                     R$
                   </span>
-                  <input
+                  <Input
+                    id="costPrice"
                     type="number"
                     value={costPrice}
                     onChange={(e) => setCostPrice(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#fe2c55] focus:ring-2 focus:ring-pink-200 transition-all text-lg text-gray-800"
+                    className="pl-10 text-lg"
                     placeholder="0,00"
                     step="0.01"
                   />
@@ -197,82 +264,184 @@ const DropshippingCalculator = () => {
               </div>
 
               {/* Marketplace */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-2">
+              <div className="grid w-full max-w-sm items-center gap-1.5">
+                <Label className="text-sm font-semibold text-gray-800">
                   Marketplace
-                </label>
-                <select
-                  value={marketplace}
-                  onChange={(e) => setMarketplace(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#fe2c55] focus:ring-2 focus:ring-pink-200 transition-all text-lg text-gray-800"
-                >
-                  <option value="shopee">Shopee</option>
-                  <option value="mercadolivre">Mercado Livre</option>
-                </select>
+                </Label>
+                <Select value={marketplace} onValueChange={setMarketplace}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o marketplace" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="shopee">Shopee</SelectItem>
+                    <SelectItem value="mercadolivre">Mercado Livre</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Opções específicas por marketplace */}
               {marketplace === 'shopee' && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-800 mb-2">
-                    Programa de Frete
-                  </label>
-                  <select
-                    value={shippingOption}
-                    onChange={(e) => setShippingOption(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#fe2c55] focus:ring-2 focus:ring-pink-200 transition-all text-gray-800"
-                  >
-                    <option value="with">Com Frete Grátis (20% + R$4)</option>
-                    <option value="without">Sem Frete Grátis (14% + R$4)</option>
-                  </select>
-                </div>
+                <>
+                  <div className="grid w-full max-w-sm items-center gap-1.5">
+                    <Label className="text-sm font-semibold text-gray-800">
+                      Categoria (Estimativa de CPC)
+                    </Label>
+                    <Select value={category} onValueChange={handleShopeeCategoryChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(shopeeCategories).map(([key, value]) => (
+                          <SelectItem key={key} value={key}>
+                            {value.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-orange-500" />
+                      Taxas Shopee
+                    </h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-gray-600">Taxa de Transação</Label>
+                        <div className="relative">
+                          <Input 
+                            value="2%" 
+                            disabled 
+                            className="bg-gray-100 text-gray-600 h-9 font-medium" 
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-gray-600">Taxa Fixa (por item)</Label>
+                        <div className="relative">
+                          <Input 
+                            value="R$ 4,00" 
+                            disabled 
+                            className="bg-gray-100 text-gray-600 h-9 font-medium" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-500 -mt-2">*com exceções para alguns vendedores</p>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="free-shipping" className="text-sm font-medium text-gray-800">
+                          Programa de Frete Grátis
+                        </Label>
+                        <p className="text-xs text-gray-500">Adicional de 6%</p>
+                      </div>
+                      <Checkbox 
+                        id="free-shipping"
+                        checked={shippingOption === 'with'}
+                        onCheckedChange={(checked) => setShippingOption(checked ? 'with' : 'without')}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-pink-50 p-4 rounded-xl border border-pink-100 mt-2">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Checkbox 
+                        id="useShopeeAds" 
+                        checked={useShopeeAds}
+                        onCheckedChange={(checked) => setUseShopeeAds(checked as boolean)}
+                      />
+                      <Label htmlFor="useShopeeAds" className="font-bold text-gray-800 cursor-pointer">
+                        Calcular Shopee Ads
+                      </Label>
+                    </div>
+
+                    {useShopeeAds && (
+                      <div className="grid grid-cols-2 gap-4 animate-fadeIn">
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-700 mb-1">
+                            CPC Médio (R$)
+                          </Label>
+                          <Input
+                            type="number"
+                            value={adsCPC}
+                            onChange={(e) => setAdsCPC(e.target.value)}
+                            className="h-8 text-sm"
+                            placeholder="0.40"
+                            step="0.01"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-700 mb-1">
+                            Taxa de Conversão (%)
+                          </Label>
+                          <Input
+                            type="number"
+                            value={adsConversionRate}
+                            onChange={(e) => setAdsConversionRate(e.target.value)}
+                            className="h-8 text-sm"
+                            placeholder="1.5"
+                            step="0.1"
+                          />
+                        </div>
+                        <div className="col-span-2 text-xs text-gray-500 italic">
+                          * Estimativa baseada na categoria selecionada. Ajuste conforme sua campanha.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {marketplace === 'mercadolivre' && (
                 <>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-800 mb-2">
+                  <div className="grid w-full max-w-sm items-center gap-1.5">
+                    <Label className="text-sm font-semibold text-gray-800">
                       Tipo de Anúncio
-                    </label>
-                    <select
-                      value={adType}
-                      onChange={(e) => setAdType(e.target.value)}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#fe2c55] focus:ring-2 focus:ring-pink-200 transition-all text-gray-800"
-                    >
-                      <option value="gratis">Grátis (0% - Sem visibilidade)</option>
-                      <option value="classico">Clássico (10-14% - Visibilidade média)</option>
-                      <option value="premium">Premium (15-19% - Máxima visibilidade + 12x sem juros)</option>
-                    </select>
+                    </Label>
+                    <Select value={adType} onValueChange={setAdType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gratis">Grátis (0% - Sem visibilidade)</SelectItem>
+                        <SelectItem value="classico">Clássico (10-14% - Visibilidade média)</SelectItem>
+                        <SelectItem value="premium">Premium (15-19% - Máxima visibilidade + 12x sem juros)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-800 mb-2">
+                  <div className="grid w-full max-w-sm items-center gap-1.5">
+                    <Label className="text-sm font-semibold text-gray-800">
                       Categoria do Produto
-                    </label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#fe2c55] focus:ring-2 focus:ring-pink-200 transition-all text-gray-800"
-                    >
-                      {Object.entries(mercadoLivreTaxes[adType]).map(([key, value]) => (
-                        <option key={key} value={key}>
-                          {value.name} ({value.rate}%)
-                        </option>
-                      ))}
-                    </select>
+                    </Label>
+                    <Select value={category} onValueChange={setCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(mercadoLivreTaxes[adType]).map(([key, value]) => (
+                          <SelectItem key={key} value={key}>
+                            {value.name} ({value.rate}%)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Painel de Resultados */}
-          <div className="bg-gradient-to-br from-[#fe2c55] to-pink-600 rounded-2xl shadow-xl p-6 text-white">
-            <div className="flex items-center gap-2 mb-6">
-              <TrendingUp className="w-6 h-6" />
-              <h2 className="text-2xl font-bold">Resultado da Precificação</h2>
-            </div>
-
+          <Card className={`${calculations ? 'bg-gradient-to-br from-green-600 to-emerald-600 border-none' : 'bg-gray-500 border-none'} shadow-xl text-white transition-all duration-500`}>
+            <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
+              <TrendingUp className="w-6 h-6 text-white" />
+              <CardTitle className="text-2xl font-bold text-white">Resultado da Precificação</CardTitle>
+            </CardHeader>
+            <CardContent>
             {calculations ? (
               <div className="space-y-4">
                 {/* Preço de Venda Sugerido */}
@@ -301,8 +470,21 @@ const DropshippingCalculator = () => {
                     </div>
                   )}
 
+                  {parseFloat(calculations.adsCostPerSale) > 0 && (
+                    <>
+                      <div className="flex justify-between items-center py-2 border-b border-white/20">
+                        <span className="text-white/80">Custo Shopee Ads (Est.)</span>
+                        <span className="font-semibold text-red-200">- R$ {calculations.adsCostPerSale}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2 border-b border-white/20 bg-white/5 px-2 rounded">
+                        <span className="text-white/80 text-sm">CPA (Custo por Aquisição)</span>
+                        <span className="font-semibold text-white">R$ {calculations.adsCostPerSale}</span>
+                      </div>
+                    </>
+                  )}
+
                   <div className="flex justify-between items-center py-2 border-b border-white/20">
-                    <span className="text-white/80">Total de Taxas</span>
+                    <span className="text-white/80">Total de Taxas e Custos</span>
                     <span className="font-semibold text-red-200">- R$ {calculations.totalFees}</span>
                   </div>
 
@@ -340,64 +522,93 @@ const DropshippingCalculator = () => {
                 </p>
               </div>
             )}
-          </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Tabela de Referência */}
-        <div className="mt-8 bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Package className="w-5 h-5 text-[#fe2c55]" />
-            Tabela de Margem Recomendada por Faixa de Preço
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b-2 border-gray-200">
-                  <th className="text-left py-3 px-4 text-gray-800 font-semibold">Preço Médio do Produto</th>
-                  <th className="text-center py-3 px-4 text-gray-800 font-semibold">Taxa Real {marketplace === 'shopee' ? 'Shopee' : 'Mercado Livre'}</th>
-                  <th className="text-center py-3 px-4 text-gray-800 font-semibold">Margem Recomendada</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
-                  <td className="py-3 px-4 text-gray-700">até R$ 30</td>
-                  <td className="text-center py-3 px-4 font-semibold text-[#fe2c55]">
-                    {marketplace === 'shopee' ? '20% a 35%' : adType === 'gratis' ? '0%' : adType === 'classico' ? '10% a 14%' : '15% a 19%'}
-                  </td>
-                  <td className="text-center py-3 px-4 font-bold text-green-600">30%</td>
-                </tr>
-                <tr className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
-                  <td className="py-3 px-4 text-gray-700">R$ 30 a 50</td>
-                  <td className="text-center py-3 px-4 font-semibold text-[#fe2c55]">
-                    {marketplace === 'shopee' ? '18% a 28%' : adType === 'gratis' ? '0%' : adType === 'classico' ? '10% a 14%' : '15% a 19%'}
-                  </td>
-                  <td className="text-center py-3 px-4 font-bold text-green-600">25%</td>
-                </tr>
-                <tr className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
-                  <td className="py-3 px-4 text-gray-700">R$ 50 a 80</td>
-                  <td className="text-center py-3 px-4 font-semibold text-[#fe2c55]">
-                    {marketplace === 'shopee' ? '15% a 23%' : adType === 'gratis' ? '0%' : adType === 'classico' ? '10% a 14%' : '15% a 19%'}
-                  </td>
-                  <td className="text-center py-3 px-4 font-bold text-green-600">22%</td>
-                </tr>
-                <tr className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
-                  <td className="py-3 px-4 text-gray-700">R$ 80 a 150</td>
-                  <td className="text-center py-3 px-4 font-semibold text-[#fe2c55]">
-                    {marketplace === 'shopee' ? '14% a 20%' : adType === 'gratis' ? '0%' : adType === 'classico' ? '10% a 14%' : '15% a 19%'}
-                  </td>
-                  <td className="text-center py-3 px-4 font-bold text-green-600">19%</td>
-                </tr>
-                <tr className="hover:bg-pink-50 transition-colors">
-                  <td className="py-3 px-4 text-gray-700">acima de R$ 150</td>
-                  <td className="text-center py-3 px-4 font-semibold text-[#fe2c55]">
-                    {marketplace === 'shopee' ? '14% a 18%' : adType === 'gratis' ? '0%' : adType === 'classico' ? '10% a 14%' : '15% a 19%'}
-                  </td>
-                  <td className="text-center py-3 px-4 font-bold text-green-600">16%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <Card className="mt-8 shadow-xl border-gray-100">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold text-gray-800">
+              <Package className="w-5 h-5 text-[#fe2c55]" />
+              Tabela de Margem Recomendada por Faixa de Preço (Shopee)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b-2 border-gray-200">
+                  <TableHead className="text-gray-800 font-semibold">Preço Médio do Produto</TableHead>
+                  <TableHead className="text-center text-gray-800 font-semibold">Taxa Real Shopee</TableHead>
+                  <TableHead className="text-center text-gray-800 font-semibold">Margem Recomendada</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
+                  <TableCell className="text-gray-700">até R$ 30</TableCell>
+                  <TableCell className="text-center font-semibold text-[#fe2c55]">20% a 35%</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">30%</TableCell>
+                </TableRow>
+                <TableRow className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
+                  <TableCell className="text-gray-700">R$ 30 a 50</TableCell>
+                  <TableCell className="text-center font-semibold text-[#fe2c55]">18% a 28%</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">25%</TableCell>
+                </TableRow>
+                <TableRow className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
+                  <TableCell className="text-gray-700">R$ 50 a 80</TableCell>
+                  <TableCell className="text-center font-semibold text-[#fe2c55]">15% a 23%</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">22%</TableCell>
+                </TableRow>
+                <TableRow className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
+                  <TableCell className="text-gray-700">R$ 80 a 150</TableCell>
+                  <TableCell className="text-center font-semibold text-[#fe2c55]">14% a 20%</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">19%</TableCell>
+                </TableRow>
+                <TableRow className="hover:bg-pink-50 transition-colors">
+                  <TableCell className="text-gray-700">acima de R$ 150</TableCell>
+                  <TableCell className="text-center font-semibold text-[#fe2c55]">14% a 18%</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">16%</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Tabela de Referência Mercado Livre */}
+        <Card className="mt-8 shadow-xl border-gray-100">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold text-gray-800">
+              <Package className="w-5 h-5 text-yellow-500" />
+              Tabela de Margem Recomendada (Mercado Livre)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b-2 border-gray-200">
+                  <TableHead className="text-gray-800 font-semibold">Tipo de Anúncio</TableHead>
+                  <TableHead className="text-center text-gray-800 font-semibold">Comissão Média</TableHead>
+                  <TableHead className="text-center text-gray-800 font-semibold">Visibilidade</TableHead>
+                  <TableHead className="text-center text-gray-800 font-semibold">Margem Sugerida</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow className="border-b border-gray-100 hover:bg-yellow-50 transition-colors">
+                  <TableCell className="text-gray-700 font-medium">Clássico</TableCell>
+                  <TableCell className="text-center font-semibold text-yellow-600">10% a 14%</TableCell>
+                  <TableCell className="text-center text-gray-600">Alta</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">20% a 25%</TableCell>
+                </TableRow>
+                <TableRow className="hover:bg-yellow-50 transition-colors">
+                  <TableCell className="text-gray-700 font-medium">Premium</TableCell>
+                  <TableCell className="text-center font-semibold text-yellow-600">15% a 19%</TableCell>
+                  <TableCell className="text-center text-gray-600">Máxima (+12x sem juros)</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">25% a 30%</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         {/* Informações Adicionais */}
         <div className="mt-6 bg-pink-50 rounded-xl p-5 border border-pink-200">
