@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 
 import logo from '../imgs/Logonome-alobexpress.png';
 import contactBg from '../imgs/contactbg.jpg';
+import dollarAnimateReal from '../video/dollar animate real.mp4';
 
 interface TaxRate {
   rate: number;
@@ -48,6 +49,8 @@ const DropshippingCalculator = () => {
   const [extraCommission, setExtraCommission] = useState('');
   
   const [marketplace, setMarketplace] = useState('mercadolivre');
+  const [tiktokCommission, setTiktokCommission] = useState('6');
+  const [wordpressShipping, setWordpressShipping] = useState('0');
   const [competitorPrice, setCompetitorPrice] = useState('');
   const [competitorMarkup, setCompetitorMarkup] = useState('1.10');
   
@@ -191,10 +194,15 @@ const DropshippingCalculator = () => {
       gatewayFeeVal: number,
       manualPriceVal: number,
       competitorPriceVal: number,
-      competitorMarkupVal: number
+      competitorMarkupVal: number,
+      tiktokCommVal: number,
+      wpShippingVal: number
   ) => {
     // Total Base Cost for Calculation (Product + Packaging)
-    const totalCost = baseCost + pkgCost;
+    // For Wordpress, include shipping cost in the base if defined? Or treat as a fee?
+    // User said "adicione Frete com o valor padrão 0" for Wordpress.
+    // Usually shipping is a cost. Let's add it to totalCost if marketplace is wordpress.
+    const totalCost = baseCost + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0);
 
     let marketplaceFee = 0;
     let fixedFee = 0;
@@ -212,6 +220,12 @@ const DropshippingCalculator = () => {
             const extra = currentExtraCommission;
             currentMarketplaceFee = standardCommission + (hasFreeShipping ? freeShippingFee : 0) + extra;
             currentFixedFee = currentPrice < 8 ? (currentPrice * 0.5) : 4;
+        } else if (currentMarketplace === 'tiktok') {
+            currentMarketplaceFee = tiktokCommVal;
+            currentFixedFee = 0; // Assume 0 fixed fee for Tiktok for now as per instructions
+        } else if (currentMarketplace === 'wordpress') {
+            currentMarketplaceFee = 0; // No marketplace fee for own site usually, only gateway
+            currentFixedFee = 0;
         } else {
             const categoryTaxes = mercadoLivreTaxes[currentAdType];
             const tax = categoryTaxes[currentCategory];
@@ -243,6 +257,12 @@ const DropshippingCalculator = () => {
       taxDescription = hasFreeShipping 
         ? `14% (Comissão) + 6% (Frete Grátis)${extra > 0 ? ' + ' + extra + '% (Extra)' : ''} + R$4,00 (Tarifa Fixa Shopee)` 
         : `12% (Comissão) + 2% (Transação)${extra > 0 ? ' + ' + extra + '% (Extra)' : ''} + R$4,00 (Tarifa Fixa Shopee)`;
+    } else if (currentMarketplace === 'tiktok') {
+        marketplaceFee = tiktokCommVal;
+        taxDescription = `${tiktokCommVal}% (Comissão Tiktok Shop)`;
+    } else if (currentMarketplace === 'wordpress') {
+        marketplaceFee = 0;
+        taxDescription = `Venda Direta (Site Próprio)`;
     } else {
       const categoryTaxes = mercadoLivreTaxes[currentAdType];
       const tax = categoryTaxes[currentCategory];
@@ -304,7 +324,7 @@ const DropshippingCalculator = () => {
         taxDescription = currentAdType === 'gratis' 
         ? `0% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`
         : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
-    } else {
+    } else if (currentMarketplace === 'shopee') {
         // Shopee logic with dynamic fixed fee
         let tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 4, gatewayFeeVal);
         
@@ -321,6 +341,10 @@ const DropshippingCalculator = () => {
              suggestedPrice = tempPrice;
              fixedFee = 4;
         }
+    } else {
+        // Generic logic for Tiktok/Wordpress (Fixed Fee is usually 0 unless specified, here assumed 0 for now)
+        suggestedPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 0, gatewayFeeVal);
+        fixedFee = 0;
     }
 
     // Override if Markup Multiplier is set
@@ -346,13 +370,30 @@ const DropshippingCalculator = () => {
          }
     }
 
-    // Calculations based on Suggested Price
-    let calculatedCommission = suggestedPrice * (marketplaceFee / 100);
+    // Calculations based on Final Effective Price (Manual Price takes precedence for Profit Calculation)
+    const effectiveSellingPrice = manualPriceVal > 0 ? manualPriceVal : suggestedPrice;
+
+    // Recalculate costs based on Effective Selling Price
+    // Note: If manual price is used, fees like Commission and Gateway might change because they are % of price.
+    // Fixed fee might also change (e.g. Shopee < R$8 or ML < R$79).
+    
+    // We need to re-run fee calculation for the effective price
+    const finalFees = calculateFees(effectiveSellingPrice);
+    const finalFixedFee = finalFees.fixed;
+    // Marketplace fee rate is usually constant unless it depends on price (ML < R$79 free shipping? No, that's fixed fee).
+    // Actually ML free shipping (which affects cost) depends on price >= 79.
+    // But here we simplify: we assume the user selected parameters (like Ad Type) determine the rate.
+    // Only Fixed Fee varies significantly by price in our current logic.
+    // Wait, for Shopee, if price < 8, fixed fee changes.
+    // For ML, fixed fee changes by price range.
+    // So using finalFixedFee is correct.
+
+    let calculatedCommission = effectiveSellingPrice * (marketplaceFee / 100);
     if (currentMarketplace === 'shopee' && calculatedCommission > 100) {
        calculatedCommission = 100;
     }
 
-    const gatewayCost = suggestedPrice * (gatewayFeeVal / 100);
+    const gatewayCost = effectiveSellingPrice * (gatewayFeeVal / 100);
     
     // Ads Cost Calculation
     let adsCostPerSale = 0;
@@ -361,8 +402,9 @@ const DropshippingCalculator = () => {
     }
 
     const marketplaceCost = calculatedCommission;
-    const netRevenue = suggestedPrice - marketplaceCost - fixedFee - gatewayCost - totalCost - adsCostPerSale;
-    const actualMargin = (netRevenue / suggestedPrice) * 100;
+    // Net Revenue = Effective Price - Commission - Fixed Fee - Gateway - Total Cost - Ads
+    const netRevenue = effectiveSellingPrice - marketplaceCost - finalFixedFee - gatewayCost - totalCost - adsCostPerSale;
+    const actualMargin = (netRevenue / effectiveSellingPrice) * 100;
     
     // Breakeven Analysis for Ads
     const breakevenCPA = netRevenue + adsCostPerSale; // Maximum we can spend on ads to break even (profit before ads)
@@ -376,25 +418,37 @@ const DropshippingCalculator = () => {
         reverseCR = (currentSales / clicks) * 100;
     }
 
-    // Manual Selling Price Logic
+    // Manual Selling Price Logic (Discount display)
     const discountApplied = manualPriceVal > 0 ? suggestedPrice - manualPriceVal : 0;
     
     // Recommended Value
     const effectiveMarkup = competitorMarkupVal > 0 ? competitorMarkupVal : 1.1;
     const recommendedValue = competitorPriceVal * effectiveMarkup;
 
+    // Helper to determine status based on margin
+    // Returns: 'negative', 'low', 'good', 'excellent'
+    let marginStatus = 'good';
+    if (netRevenue < 0) {
+        marginStatus = 'negative';
+    } else if (actualMargin < (recommendedMargin - 0.5)) { // Add tolerance for floating point/rounding
+        marginStatus = 'low';
+    } else if (actualMargin > (recommendedMargin + 0.5)) { // Add tolerance
+        marginStatus = 'excellent';
+    }
+    // 'good' matches recommended approximately (+/- 0.5%)
+
     return {
       cost: baseCost,
-      packagingCost: pkgCost,
+      packagingCost: pkgCost.toFixed(2),
       totalCost,
       suggestedPrice: suggestedPrice.toFixed(2),
       marketplaceFee: marketplaceFee.toFixed(0),
       marketplaceCost: marketplaceCost.toFixed(2),
-      fixedFee: fixedFee.toFixed(2),
+      fixedFee: finalFixedFee.toFixed(2), // Use finalFixedFee based on effective price
       gatewayCost: gatewayCost.toFixed(2),
       gatewayFee: gatewayFeeVal,
       adsCostPerSale: adsCostPerSale.toFixed(2),
-      totalFees: (marketplaceCost + fixedFee + gatewayCost + adsCostPerSale + pkgCost).toFixed(2),
+      totalFees: (marketplaceCost + finalFixedFee + gatewayCost + adsCostPerSale + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0)).toFixed(2),
       netRevenue: netRevenue.toFixed(2),
       actualMargin: actualMargin.toFixed(1),
       recommendedMargin,
@@ -404,7 +458,8 @@ const DropshippingCalculator = () => {
       recommendedValue: recommendedValue.toFixed(2),
       competitor: competitorPriceVal,
       breakevenCPA: breakevenCPA.toFixed(2),
-      reverseCR: reverseCR.toFixed(2)
+      reverseCR: reverseCR.toFixed(2),
+      marginStatus // Include status for UI coloring
     };
   };
 
@@ -422,11 +477,13 @@ const DropshippingCalculator = () => {
     const manual = parseFloat(manualSellingPrice) || 0;
     const competitor = parseFloat(competitorPrice) || 0;
     const compMarkup = parseFloat(competitorMarkup) || 1.1;
+    const tiktokComm = parseFloat(tiktokCommission) || 6;
+    const wpShipping = parseFloat(wordpressShipping) || 0;
 
     return calculateMetrics(
-        cost, pkg, markupMult, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, manual, competitor, compMarkup
+        cost, pkg, markupMult, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, manual, competitor, compMarkup, tiktokComm, wpShipping
     );
-  }, [costPrice, packagingCost, marketplace, category, shippingOption, adType, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, markupMultiplier, manualSellingPrice, competitorPrice, competitorMarkup, hasVariations, extraCommission]);
+  }, [costPrice, packagingCost, marketplace, category, shippingOption, adType, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, markupMultiplier, manualSellingPrice, competitorPrice, competitorMarkup, hasVariations, extraCommission, tiktokCommission, wordpressShipping]);
 
   // Calculate variations if any
   const variationCalculations = useMemo(() => {
@@ -440,6 +497,8 @@ const DropshippingCalculator = () => {
       const gateway = parseFloat(gatewayFee) || 0;
       const competitor = parseFloat(competitorPrice) || 0;
       const compMarkup = parseFloat(competitorMarkup) || 1.1;
+      const tiktokComm = parseFloat(tiktokCommission) || 6;
+      const wpShipping = parseFloat(wordpressShipping) || 0;
 
       return variations.map(v => {
           const vCost = parseFloat(v.cost) || 0;
@@ -448,16 +507,31 @@ const DropshippingCalculator = () => {
           return {
               ...v,
               metrics: calculateMetrics(
-                  vCost, pkg, vMarkup, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, 0, competitor, compMarkup
+                  vCost, pkg, vMarkup, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, 0, competitor, compMarkup, tiktokComm, wpShipping
               )
           };
       });
-  }, [variations, packagingCost, marketplace, category, shippingOption, adType, extraCommission, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, competitorPrice, competitorMarkup, hasVariations]);
+  }, [variations, packagingCost, marketplace, category, shippingOption, adType, extraCommission, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, competitorPrice, competitorMarkup, hasVariations, tiktokCommission, wordpressShipping]);
 
 
 
   return (
-    <div className="min-h-screen bg-black p-4 md:p-8">
+    <div className="min-h-screen bg-black relative overflow-hidden font-sans">
+      {/* Video Background */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black z-10" />
+         <video 
+            autoPlay 
+            loop 
+            muted 
+             playsInline
+             className="w-full h-full object-cover opacity-30 mix-blend-overlay"
+          >
+             <source src={dollarAnimateReal} type="video/mp4" />
+          </video>
+       </div>
+
+      <div className="relative z-10 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="grid md:grid-cols-2 gap-4 items-center mb-8">
@@ -480,7 +554,7 @@ const DropshippingCalculator = () => {
           <Card className="shadow-xl border-gray-100">
             <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
               <Calculator className="w-6 h-6 text-blue-600" />
-              <CardTitle className="text-2xl font-bold text-gray-800">Dados do Produto</CardTitle>
+              <CardTitle className="text-2xl font-bold text-gray-800 font-iceland">Dados do Produto</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5 pt-4">
               {/* Nome do Produto */}
@@ -517,38 +591,49 @@ const DropshippingCalculator = () => {
                 </div>
               </div>
 
-              {/* Custos Extras */}
+              {/* Preço de Venda Manual */}
               <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="packagingCost" className="text-sm font-semibold text-gray-800">
-                  Custos embalagem + impressão + Transporte
+                <Label htmlFor="manualSellingPrice" className="text-base font-bold text-blue-700">
+                  Preço de venda
                 </Label>
                 <div className="relative">
-                   <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
-                   <Input
-                    id="packagingCost"
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
+                    R$
+                  </span>
+                  <Input
+                    id="manualSellingPrice"
                     type="number"
-                    className="pl-8"
-                    value={packagingCost}
-                    onChange={(e) => setPackagingCost(e.target.value)}
-                    placeholder="0.00"
-                   />
+                    value={manualSellingPrice}
+                    onChange={(e) => setManualSellingPrice(e.target.value)}
+                    className="pl-10 text-xl border-blue-400 focus:border-blue-600 font-bold"
+                    placeholder="0,00"
+                    step="0.01"
+                  />
                 </div>
               </div>
 
-              {/* Taxa de Gateway */}
+              {/* Markup */}
               <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="gatewayFee" className="text-sm font-semibold text-gray-800">
-                  Taxa de Gateway de Pagamento (%)
+                <Label className="text-sm font-semibold text-gray-800">
+                  Markup
                 </Label>
-                <div className="relative">
-                   <Input
-                    id="gatewayFee"
-                    type="number"
-                    value={gatewayFee}
-                    onChange={(e) => setGatewayFee(e.target.value)}
-                    placeholder="Ex: 4.99"
-                   />
-                </div>
+                <Select value={markupMultiplier} onValueChange={setMarkupMultiplier}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o markup" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">0 (Automático / Margem Recomendada)</SelectItem>
+                    <SelectItem value="1">1.0x</SelectItem>
+                    <SelectItem value="1.25">1.25x</SelectItem>
+                    <SelectItem value="1.5">1.5x</SelectItem>
+                    <SelectItem value="1.75">1.75x</SelectItem>
+                    <SelectItem value="2">2.0x</SelectItem>
+                    <SelectItem value="3">3.0x</SelectItem>
+                    <SelectItem value="4">4.0x</SelectItem>
+                    <SelectItem value="5">5.0x</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-gray-500">Define o preço sugerido multiplicando o custo.</p>
               </div>
 
               {/* Variações Checkbox */}
@@ -628,30 +713,6 @@ const DropshippingCalculator = () => {
                 </div>
               )}
 
-              {/* Markup */}
-              <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label className="text-sm font-semibold text-gray-800">
-                  Markup
-                </Label>
-                <Select value={markupMultiplier} onValueChange={setMarkupMultiplier}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o markup" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">0 (Automático / Margem Recomendada)</SelectItem>
-                    <SelectItem value="1">1.0x</SelectItem>
-                    <SelectItem value="1.25">1.25x</SelectItem>
-                    <SelectItem value="1.5">1.5x</SelectItem>
-                    <SelectItem value="1.75">1.75x</SelectItem>
-                    <SelectItem value="2">2.0x</SelectItem>
-                    <SelectItem value="3">3.0x</SelectItem>
-                    <SelectItem value="4">4.0x</SelectItem>
-                    <SelectItem value="5">5.0x</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[10px] text-gray-500">Define o preço sugerido multiplicando o custo.</p>
-              </div>
-
               {/* Marketplace */}
               <div className="grid w-full max-w-sm items-center gap-1.5">
                 <Label className="text-sm font-semibold text-gray-800">
@@ -662,8 +723,10 @@ const DropshippingCalculator = () => {
                     <SelectValue placeholder="Selecione o marketplace" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="shopee">Shopee</SelectItem>
                     <SelectItem value="mercadolivre">Mercado Livre</SelectItem>
+                    <SelectItem value="shopee">Shopee</SelectItem>
+                    <SelectItem value="tiktok">Tiktok Shop</SelectItem>
+                    <SelectItem value="wordpress">Wordpress (Site)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -671,7 +734,11 @@ const DropshippingCalculator = () => {
               {/* Preço Mínimo Concorrente */}
               <div className="grid w-full max-w-sm items-center gap-1.5">
                 <Label htmlFor="competitorPrice" className="text-sm font-semibold text-gray-800">
-                  Preço Mínimo Concorrente ({marketplace === 'shopee' ? 'Shopee' : 'Mercado Livre'})
+                  Preço Mínimo Concorrente ({
+                    marketplace === 'shopee' ? 'Shopee' : 
+                    marketplace === 'mercadolivre' ? 'Mercado Livre' : 
+                    marketplace === 'tiktok' ? 'Tiktok Shop' : 'Marketplaces'
+                  })
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
@@ -689,24 +756,37 @@ const DropshippingCalculator = () => {
                 </div>
               </div>
 
-              {/* Preço de Venda Manual */}
+              {/* Custos Extras */}
               <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="manualSellingPrice" className="text-base font-bold text-blue-700">
-                  Preço de venda
+                <Label htmlFor="packagingCost" className="text-sm font-semibold text-gray-800">
+                  Custos embalagem + impressão + Transporte
                 </Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
-                    R$
-                  </span>
-                  <Input
-                    id="manualSellingPrice"
+                   <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                   <Input
+                    id="packagingCost"
                     type="number"
-                    value={manualSellingPrice}
-                    onChange={(e) => setManualSellingPrice(e.target.value)}
-                    className="pl-10 text-xl border-blue-400 focus:border-blue-600 font-bold"
-                    placeholder="0,00"
-                    step="0.01"
-                  />
+                    className="pl-8"
+                    value={packagingCost}
+                    onChange={(e) => setPackagingCost(e.target.value)}
+                    placeholder="0.00"
+                   />
+                </div>
+              </div>
+
+              {/* Taxa de Gateway */}
+              <div className="grid w-full max-w-sm items-center gap-1.5">
+                <Label htmlFor="gatewayFee" className="text-sm font-semibold text-gray-800">
+                  Taxa de Gateway de Pagamento (%)
+                </Label>
+                <div className="relative">
+                   <Input
+                    id="gatewayFee"
+                    type="number"
+                    value={gatewayFee}
+                    onChange={(e) => setGatewayFee(e.target.value)}
+                    placeholder="Ex: 4.99"
+                   />
                 </div>
               </div>
 
@@ -950,6 +1030,41 @@ const DropshippingCalculator = () => {
                   </div>
                 </>
               )}
+
+              {marketplace === 'tiktok' && (
+                <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                   <Label htmlFor="tiktokCommission" className="text-sm font-semibold text-gray-800">
+                     Taxa de Comissão Tiktok (%)
+                   </Label>
+                   <div className="relative">
+                      <Input
+                       id="tiktokCommission"
+                       type="number"
+                       value={tiktokCommission}
+                       onChange={(e) => setTiktokCommission(e.target.value)}
+                       placeholder="Ex: 6"
+                      />
+                   </div>
+                </div>
+              )}
+
+              {marketplace === 'wordpress' && (
+                <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                   <Label htmlFor="wordpressShipping" className="text-sm font-semibold text-gray-800">
+                     Frete (R$)
+                   </Label>
+                   <div className="relative">
+                      <Input
+                       id="wordpressShipping"
+                       type="number"
+                       value={wordpressShipping}
+                       onChange={(e) => setWordpressShipping(e.target.value)}
+                       placeholder="Ex: 0"
+                      />
+                   </div>
+                </div>
+              )}
+
             </CardContent>
           </Card>
 
@@ -962,56 +1077,110 @@ const DropshippingCalculator = () => {
             <div className="relative z-10">
             <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
               <TrendingUp className="w-6 h-6 text-white" />
-              <CardTitle className="text-2xl font-bold text-white">Resultado da Precificação</CardTitle>
+              <CardTitle className="text-2xl font-bold text-white font-iceland">Resultado da Precificação</CardTitle>
             </CardHeader>
             <CardContent>
             {calculations ? (
               <div className="space-y-4">
                 {/* Preço de Venda Sugerido */}
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
+                <div className={`
+                    rounded-xl p-5 border shadow-sm transition-colors duration-300
+                    ${calculations.marginStatus === 'negative' ? 'bg-red-600 border-red-500' : 
+                      calculations.marginStatus === 'low' ? 'bg-yellow-400 border-yellow-500' :
+                      calculations.marginStatus === 'excellent' ? 'bg-[#25f4ee] border-[#20d8d2]' :
+                      'bg-[#DCFCE7] border-green-200' // good/default
+                    }
+                `}>
                     <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                         <div>
-                            <p className="text-sm text-white/80 mb-1">Preço de Venda Sugerido</p>
+                            <p className={`text-sm mb-1 font-iceland ${
+                                calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                            }`}>Preço de Venda Sugerido</p>
+                            
                             {productName && (
-                                <p className="text-lg font-semibold text-white/90 mb-1">{productName}</p>
+                                <p className={`text-lg font-semibold mb-1 ${
+                                    calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/80'
+                                }`}>{productName}</p>
                             )}
-                            <p className="text-4xl font-bold">R$ {calculations.suggestedPrice}</p>
-                            <p className="text-xs text-white/70 mt-2">{calculations.taxDescription}</p>
+                            
+                            <p className={`text-4xl font-bold ${
+                                calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
+                            }`}>R$ {calculations.suggestedPrice}</p>
+                            
+                            <p className={`text-xs mt-2 ${
+                                calculations.marginStatus === 'negative' ? 'text-white/70' : 'text-black/60'
+                            }`}>{calculations.taxDescription}</p>
                         </div>
                         {calculations.manualPrice > 0 && (
                              <div className="text-left md:text-right">
-                                <p className="text-sm text-white/80 mb-1">Seu Preço</p>
-                                <p className="text-3xl font-bold text-yellow-300">R$ {calculations.manualPrice.toFixed(2)}</p>
+                                <p className={`text-sm mb-1 ${
+                                    calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                }`}>Seu Preço</p>
+                                <p className={`text-3xl font-bold ${
+                                    calculations.marginStatus === 'negative' ? 'text-yellow-300' : 'text-black'
+                                }`}>R$ {calculations.manualPrice.toFixed(2)}</p>
                              </div>
                         )}
                     </div>
                     
                     {calculations.manualPrice > 0 && (
-                        <div className="mt-4 pt-4 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-2">
+                        <div className={`mt-4 pt-4 border-t flex flex-col md:flex-row justify-between items-center gap-2 ${
+                            calculations.marginStatus === 'negative' ? 'border-white/10' : 'border-black/10'
+                        }`}>
                             <div>
-                                <p className="text-xs text-white/60">
+                                <p className={`text-xs ${
+                                    calculations.marginStatus === 'negative' ? 'text-white/60' : 'text-black/60'
+                                }`}>
                                     {calculations.discountApplied >= 0 ? 'Desconto Aplicado' : 'Acréscimo Aplicado'}
                                 </p>
-                                <p className={`font-semibold ${calculations.discountApplied < 0 ? 'text-green-300' : 'text-white'}`}>
+                                <p className={`font-semibold ${
+                                    calculations.marginStatus === 'negative' 
+                                        ? (calculations.discountApplied < 0 ? 'text-green-300' : 'text-white')
+                                        : (calculations.discountApplied < 0 ? 'text-green-700' : 'text-black')
+                                }`}>
                                     R$ {Math.abs(calculations.discountApplied).toFixed(2)}
                                 </p>
                             </div>
                             <div className="text-left md:text-right">
-                                <p className="text-xs text-white/80 font-medium">Valor Recomendado {marketplace === 'shopee' ? 'Shopee' : 'Mercado Livre'}</p>
-                                <p className="font-bold text-white text-lg">R$ {calculations.recommendedValue}</p>
+                                <p className={`text-xs font-medium ${
+                                    calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                }`}>
+                                    Valor Recomendado {
+                                        marketplace === 'shopee' ? 'Shopee' : 
+                                        marketplace === 'mercadolivre' ? 'Mercado Livre' :
+                                        marketplace === 'tiktok' ? 'Tiktok Shop' : 'Site'
+                                    }
+                                </p>
+                                <p className={`font-bold text-lg ${
+                                    calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
+                                }`}>R$ {calculations.recommendedValue}</p>
                             </div>
                         </div>
                     )}
                     
                     {calculations.competitor > 0 && !calculations.manualPrice && (
-                        <div className="mt-4 pt-4 border-t border-white/10">
+                        <div className={`mt-4 pt-4 border-t ${
+                            calculations.marginStatus === 'negative' ? 'border-white/10' : 'border-black/10'
+                        }`}>
                              <div className="flex flex-col md:flex-row justify-between items-center gap-2">
                                 <div className="text-left">
-                                    <p className="text-xs text-white/80 font-medium">Valor Recomendado {marketplace === 'shopee' ? 'Shopee' : 'Mercado Livre'}</p>
-                                    <p className="font-bold text-white text-lg">R$ {calculations.recommendedValue}</p>
+                                    <p className={`text-xs font-medium ${
+                                        calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                    }`}>
+                                        Valor Recomendado {
+                                            marketplace === 'shopee' ? 'Shopee' : 
+                                            marketplace === 'mercadolivre' ? 'Mercado Livre' :
+                                            marketplace === 'tiktok' ? 'Tiktok Shop' : 'Site'
+                                        }
+                                    </p>
+                                    <p className={`font-bold text-lg ${
+                                        calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
+                                    }`}>R$ {calculations.recommendedValue}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                     <Label htmlFor="competitorMarkup" className="text-xs text-white/80">Markup Concorrência:</Label>
+                                     <Label htmlFor="competitorMarkup" className={`text-xs ${
+                                         calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                     }`}>Markup Concorrência:</Label>
                                      <div className="flex items-center gap-2">
                                          <Input 
                                             id="competitorMarkup"
@@ -1021,9 +1190,13 @@ const DropshippingCalculator = () => {
                                             step="0.01" 
                                             min="1.10" 
                                             max="1.25"
-                                            className="h-8 w-20 text-xs bg-white/20 border-white/30 text-white placeholder-white/50"
+                                            className={`h-8 w-20 text-xs bg-transparent border ${
+                                                calculations.marginStatus === 'negative' ? 'border-white/30 text-white placeholder-white/50' : 'border-black/20 text-black placeholder-black/50'
+                                            }`}
                                          />
-                                         <span className="text-xs text-white/70">x</span>
+                                         <span className={`text-xs ${
+                                             calculations.marginStatus === 'negative' ? 'text-white/70' : 'text-black/50'
+                                         }`}>x</span>
                                      </div>
                                 </div>
                              </div>
@@ -1072,6 +1245,13 @@ const DropshippingCalculator = () => {
                         }
                     </span>
                   </div>
+
+                  {marketplace === 'wordpress' && parseFloat(wordpressShipping) > 0 && (
+                    <div className="flex justify-between items-center py-2 border-b border-white/20">
+                      <span className="text-white/80">Frete (Wordpress)</span>
+                      <span className="font-semibold text-red-200">- R$ {wordpressShipping}</span>
+                    </div>
+                  )}
                   
                   <div className="flex justify-between items-center py-2 border-b border-white/20">
                     <span className="text-white/80">Taxa Marketplace ({calculations.marketplaceFee}%)</span>
@@ -1103,15 +1283,31 @@ const DropshippingCalculator = () => {
                     <span className="font-semibold text-red-200">- R$ {calculations.totalFees}</span>
                   </div>
 
-                  <div className="flex justify-between items-center py-3 bg-white/10 rounded-lg px-3 mt-2">
-                    <span className="font-semibold">Lucro Líquido</span>
-                    <span className="text-2xl font-bold text-white">R$ {calculations.netRevenue}</span>
-                  </div>
+                  <div className={`flex justify-between items-center py-3 rounded-lg px-3 mt-2 border shadow-lg ${
+                     calculations.marginStatus === 'negative' ? 'bg-red-600 border-red-500' :
+                     calculations.marginStatus === 'excellent' ? 'bg-[#25f4ee] border-[#20d8d2]' :
+                     'bg-green-600 border-green-500'
+                   }`}>
+                     <span className={`font-semibold font-iceland ${
+                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     }`}>Lucro Líquido</span>
+                     <span className={`text-2xl font-bold ${
+                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     }`}>R$ {calculations.netRevenue}</span>
+                   </div>
 
-                  <div className="flex justify-between items-center py-3 bg-white/10 rounded-lg px-3">
-                    <span className="font-semibold">Margem de Lucro</span>
-                    <span className="text-2xl font-bold text-white">{calculations.actualMargin}%</span>
-                  </div>
+                   <div className={`flex justify-between items-center py-3 rounded-lg px-3 border shadow-lg ${
+                     calculations.marginStatus === 'negative' ? 'bg-red-600 border-red-500' :
+                     calculations.marginStatus === 'excellent' ? 'bg-[#25f4ee] border-[#20d8d2]' :
+                     'bg-green-600 border-green-500'
+                   }`}>
+                     <span className={`font-semibold font-iceland ${
+                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     }`}>Margem de Lucro</span>
+                     <span className={`text-2xl font-bold ${
+                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     }`}>{calculations.actualMargin}%</span>
+                   </div>
                 </div>
 
                 {/* Recomendação */}
@@ -1167,6 +1363,72 @@ const DropshippingCalculator = () => {
             </div>
           </Card>
         </div>
+
+        {/* Resultados das Variações */}
+        {variations.length > 0 && (
+          <Card className="mt-8 shadow-xl bg-black/40 backdrop-blur-md border-white/20">
+            <CardHeader>
+              <CardTitle className="text-xl font-oxanium text-white/90">Resultados das Variações</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/10 hover:bg-white/5">
+                    <TableHead className="text-white font-bold">Variação</TableHead>
+                    <TableHead className="text-center text-white font-bold">Custo Total</TableHead>
+                    <TableHead className="text-center text-white font-bold">Preço Sugerido</TableHead>
+                    <TableHead className="text-center text-white font-bold">Lucro Líquido</TableHead>
+                    <TableHead className="text-center text-white font-bold">Margem</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {variations.map((v) => {
+                    const metrics = calculateMetrics(
+                      parseFloat(v.cost),
+                      parseFloat(packagingCost) || 0,
+                      parseFloat(v.markup),
+                      marketplace,
+                      category,
+                      adType,
+                      shippingOption,
+                      parseFloat(extraCommission) || 0,
+                      useShopeeAds,
+                      parseFloat(adsCPC) || 0,
+                      parseFloat(dailyBudget) || 10,
+                      parseFloat(salesQuantity) || 0,
+                      parseFloat(gatewayFee) || 0,
+                      0, // Manual Price 0 to force calculation
+                      parseFloat(competitorPrice) || 0,
+                      parseFloat(competitorMarkup) || 1.10,
+                      parseFloat(tiktokCommission) || 0,
+                      parseFloat(wordpressShipping) || 0
+                    );
+                    
+                    return (
+                      <TableRow key={v.id} className="border-white/10 hover:bg-white/5">
+                        <TableCell className="font-medium text-white">{v.name}</TableCell>
+                        <TableCell className="text-center text-white">R$ {metrics.totalCost.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-white">R$ {metrics.suggestedPrice}</TableCell>
+                        <TableCell className={`text-center font-bold ${
+                          metrics.marginStatus === 'negative' ? 'text-red-400' : 
+                          metrics.marginStatus === 'excellent' ? 'text-[#25f4ee]' : 'text-green-400'
+                        }`}>
+                          R$ {metrics.netProfit}
+                        </TableCell>
+                        <TableCell className={`text-center font-bold ${
+                           metrics.marginStatus === 'negative' ? 'text-red-400' : 
+                           metrics.marginStatus === 'excellent' ? 'text-[#25f4ee]' : 'text-blue-300'
+                        }`}>
+                          {metrics.actualMargin}%
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tabela de Referência */}
         <Card className="mt-8 shadow-xl border-gray-100">
@@ -1311,6 +1573,7 @@ const DropshippingCalculator = () => {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

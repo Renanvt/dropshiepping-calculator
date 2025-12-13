@@ -11,9 +11,11 @@ test('Verify New Features: Markup, Extra Commission, and Low Price Fee', async (
   // The Select value isn't directly visible as text unless opened, but we can check the calculation.
   // Set Cost = 100.
   await page.fill('input[id="costPrice"]', '100');
-  // Default Markup 1.5x -> Suggested Price = 150.
+  // Default Markup 1.5x. Default Packaging Cost = 2.
+  // Total Cost = 100 + 2 = 102.
+  // Suggested Price = 102 * 1.5 = 153.00.
   // Use specific locator for the price result
-  await expect(page.locator('p.text-4xl')).toContainText('R$ 150.00');
+  await expect(page.locator('p.text-4xl')).toContainText('R$ 153.00');
 
   // 2. Test Extra Commission
   // Note: Default marketplace is Mercado Livre. We must switch to Shopee to see "Comissões Extras" input.
@@ -32,33 +34,38 @@ test('Verify New Features: Markup, Extra Commission, and Low Price Fee', async (
   await expect(page.getByText('10% (Extra)')).toBeVisible();
 
   // Check Calculation
-  // Price = 150.
+  // Price = 153.00.
   // Shopee Fees: 14 + 6 + 10 = 30%.
+  // 30% of 153 = 45.90.
   // Fixed Fee: R$ 4 (Price > 8).
-  // Total Fees: 150 * 0.30 + 4 = 45 + 4 = 49.
-  await expect(page.getByText('- R$ 49.00')).toBeVisible();
+  // Total Fees: 45.90 + 4 = 49.90.
+  // Wait, packaging cost (2) is also a cost, but is it in "Taxa Marketplace"?
+  // The result card usually shows "Taxa Marketplace" separately.
+  // "Taxa Marketplace (30%)" -> 45.90.
+  await expect(page.getByText('- R$ 45.90')).toBeVisible();
 
   // 4. Test Low Price Logic (< R$8)
-  // Set Cost = 2.
+  // Set Cost = 1.
   // Set Markup = 2.0x (Select "2.0x")
   
   // Clear Extra Commission first
   await page.fill('input[placeholder="0"]', '0');
   
-  await page.fill('input[id="costPrice"]', '2');
+  await page.fill('input[id="costPrice"]', '1');
   
   // Open Markup Select
   await page.locator('button:has-text("1.5x")').click(); // Current value is 1.5x
   await page.getByRole('option', { name: '2.0x' }).click();
   
-  // Suggested Price = 2 * 2 = 4.00.
-  await expect(page.locator('p.text-4xl')).toContainText('R$ 4.00');
+  // Total Cost = 1 + 2 (Pkg) = 3.
+  // Suggested Price = 3 * 2 = 6.00.
+  await expect(page.locator('p.text-4xl')).toContainText('R$ 6.00');
   
-  // Fixed Fee should be 50% of 4.00 = 2.00.
+  // Fixed Fee should be 50% of 6.00 = 3.00.
   // Check "Taxa Fixa" row in the results
   // Use a more specific locator to avoid confusion with the input label
   const resultCard = page.locator('.shadow-xl', { hasText: 'Resultado da Precificação' });
-  await expect(resultCard.getByText('- R$ 2.00')).toBeVisible();
+  await expect(resultCard.getByText('- R$ 3.00')).toBeVisible();
   
   // Check Tax Description has "R$4,00 (Tarifa Fixa)" static text?
   // No, the logic I wrote was:
