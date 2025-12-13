@@ -15,7 +15,7 @@ test('Verify New Features: Markup, Extra Commission, and Low Price Fee', async (
   // Total Cost = 100 + 2 = 102.
   // Suggested Price = 102 * 1.5 = 153.00.
   // Use specific locator for the price result
-  await expect(page.locator('p.text-4xl')).toContainText('R$ 153.00');
+  await expect(page.locator('p.text-5xl')).toContainText('R$ 153.00');
 
   // 2. Test Extra Commission
   // Note: Default marketplace is Mercado Livre. We must switch to Shopee to see "Comissões Extras" input.
@@ -59,8 +59,8 @@ test('Verify New Features: Markup, Extra Commission, and Low Price Fee', async (
   
   // Total Cost = 1 + 2 (Pkg) = 3.
   // Suggested Price = 3 * 2 = 6.00.
-  await expect(page.locator('p.text-4xl')).toContainText('R$ 6.00');
-  
+  await expect(page.locator('p.text-5xl')).toContainText('R$ 6.00');
+
   // Fixed Fee should be 50% of 6.00 = 3.00.
   // Check "Taxa Fixa" row in the results
   // Use a more specific locator to avoid confusion with the input label

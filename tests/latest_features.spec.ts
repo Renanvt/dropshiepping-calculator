@@ -23,7 +23,7 @@ test('Verify Latest Features: Discount/Acréscimo, Packaging Cost, and Variation
   await expect(page.getByText('- R$ 10.00')).toBeVisible();
   
   // Suggested Price Calculation (Markup 1.5x on 110 (100+10) = 165)
-  await expect(page.locator('p.text-4xl')).toContainText('R$ 165.00');
+  await expect(page.locator('p.text-5xl')).toContainText('R$ 165.00');
 
   // 2. Test "Acréscimo Aplicado" Label
   // Manual Price = 200 (Suggested is 165, so 35 more)
@@ -116,8 +116,8 @@ test('Verify Shopee Extra Commission and Low Price Fee', async ({ page }) => {
   
   // Check Suggested Price (Markup 1.5x default)
   // Suggested Price = (100 + 2) * 1.5 = 153.00.
-  await expect(page.locator('p.text-4xl')).toContainText('R$ 153.00');
-  
+  await expect(page.locator('p.text-5xl')).toContainText('R$ 153.00');
+
   // Now add Extra Commission 10%
   // Find input by placeholder "0" which is inside the "Comissões Extras" block or use specific locator if possible.
   // The input is near "Comissões Extras (%)".
@@ -150,10 +150,10 @@ test('Verify Shopee Extra Commission and Low Price Fee', async ({ page }) => {
   // Set Packaging 2.00
   await page.fill('input[id="packagingCost"]', '2');
 
-  // Check Suggested Price
+  // Suggested Price
   // Cost 1 + Pkg 2 = 3. Markup 1.5 (Default) -> 4.50.
-  await expect(page.locator('p.text-4xl')).toContainText('R$ 4.50');
-  
+  await expect(page.locator('p.text-5xl')).toContainText('R$ 4.50');
+
   // Fixed Fee Calculation
   // Price < 8, so Fixed Fee = 50% of 4.50 = 2.25.
   // Check "Taxa Fixa" row

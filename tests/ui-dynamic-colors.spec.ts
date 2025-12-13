@@ -33,7 +33,7 @@ test('UI Color Logic and Video Opacity', async ({ page }) => {
   // Check Profit Box Color
   const profitContainer = profitLabel.locator('..');
   // Should be Green because margin is ~25% (Good)
-  await expect(profitContainer).toHaveClass(/bg-green-600/);
+  await expect(profitContainer).toHaveClass(/bg-\[#DCFCE7\]/);
 
   // Test Case 2: Manual Price High (Excellent Margin)
   await page.fill('input[id="manualSellingPrice"]', '200'); // High price -> High margin
@@ -56,7 +56,7 @@ test('UI Color Logic and Video Opacity', async ({ page }) => {
   // Profit box: If margin is low (but positive), it should be default green (bg-green-600)
   // Logic: negative? Red. excellent? Blue. else Green.
   // So Yellow status -> Green box.
-  await expect(profitContainer).toHaveClass(/bg-green-600/);
+  await expect(profitContainer).toHaveClass(/bg-\[#DCFCE7\]/);
 
   // Test Case 4: Manual Price Very Low (Negative Profit)
   await page.fill('input[id="manualSellingPrice"]', '40'); // Below cost (50)

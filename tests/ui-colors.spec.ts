@@ -22,10 +22,11 @@ test('UI Colors and Video', async ({ page }) => {
   
   const profitLabel = page.getByText('Lucro Líquido', { exact: true });
   const profitContainer = profitLabel.locator('..');
-  // Check for green-600
-  await expect(profitContainer).toHaveClass(/bg-green-600/);
-  
+  // Check for light green #DCFCE7
+  await expect(profitContainer).toHaveClass(/bg-\[#DCFCE7\]/);
+
   const marginLabel = page.getByText('Margem de Lucro', { exact: true });
   const marginContainer = marginLabel.locator('..');
-  await expect(marginContainer).toHaveClass(/bg-green-600/);
+  // Check for light green #DCFCE7
+  await expect(marginContainer).toHaveClass(/bg-\[#DCFCE7\]/);
 });

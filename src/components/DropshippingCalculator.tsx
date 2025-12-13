@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Calculator, TrendingUp, Package, DollarSign, AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { Calculator, TrendingUp, Package, DollarSign, AlertCircle, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,10 +7,72 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+
+gsap.registerPlugin(useGSAP);
 
 import logo from '../imgs/Logonome-alobexpress.png';
 import contactBg from '../imgs/contactbg.jpg';
 import dollarAnimateReal from '../video/dollar animate real.mp4';
+
+interface CollapsibleSectionProps {
+  title: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+}
+
+const CollapsibleSection = ({ title, icon, children, defaultOpen = false, className = "" }: CollapsibleSectionProps) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const arrowRef = useRef<SVGSVGElement>(null);
+
+  const toggle = () => {
+    const content = contentRef.current;
+    const arrow = arrowRef.current;
+    
+    if (isOpen) {
+      gsap.to(content, { height: 0, opacity: 0, duration: 0.3, ease: "power2.out" });
+      gsap.to(arrow, { rotation: 0, duration: 0.3, ease: "power2.out" });
+    } else {
+      gsap.to(content, { height: "auto", opacity: 1, duration: 0.3, ease: "power2.out" });
+      gsap.to(arrow, { rotation: 180, duration: 0.3, ease: "power2.out" });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  return (
+    <Card className={`mt-8 shadow-xl border-gray-100 overflow-hidden ${className}`}>
+      <CardHeader 
+        className="cursor-pointer hover:bg-gray-50 transition-colors select-none"
+        onClick={toggle}
+      >
+        <CardTitle className="flex items-center justify-between text-xl font-bold text-gray-800 font-iceland">
+          <div className="flex items-center gap-2">
+            {icon}
+            {title}
+          </div>
+          <ChevronDown 
+            ref={arrowRef} 
+            className="w-5 h-5 text-gray-500"
+            style={{ transform: defaultOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+          />
+        </CardTitle>
+      </CardHeader>
+      <div 
+                  ref={contentRef} 
+                  className="collapsible-content"
+                  style={{ height: defaultOpen ? 'auto' : 0, opacity: defaultOpen ? 1 : 0, overflow: 'hidden' }}
+                >
+        <CardContent>
+          {children}
+        </CardContent>
+      </div>
+    </Card>
+  );
+};
 
 interface TaxRate {
   rate: number;
@@ -33,6 +95,18 @@ interface Variation {
 }
 
 const DropshippingCalculator = () => {
+  const container = useRef<HTMLDivElement>(null);
+
+  useGSAP(() => {
+    gsap.from(".animate-on-scroll", {
+      y: 30,
+      opacity: 0,
+      duration: 0.6,
+      stagger: 0.1,
+      ease: "power2.out"
+    });
+  }, { scope: container });
+
   const [productName, setProductName] = useState('');
   const [hasVariations, setHasVariations] = useState(false);
   const [variations, setVariations] = useState<Variation[]>([]);
@@ -513,10 +587,29 @@ const DropshippingCalculator = () => {
       });
   }, [variations, packagingCost, marketplace, category, shippingOption, adType, extraCommission, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, competitorPrice, competitorMarkup, hasVariations, tiktokCommission, wordpressShipping]);
 
+  useGSAP(() => {
+    // Animate Header
+    gsap.from(".header-animate", {
+      y: -30,
+      opacity: 0,
+      duration: 0.8,
+      ease: "power3.out"
+    });
 
+    // Animate Main Cards and Sections
+    gsap.from(".animate-on-scroll", {
+      y: 50,
+      opacity: 0,
+      duration: 0.8,
+      stagger: 0.2,
+      ease: "power3.out",
+      delay: 0.2,
+      clearProps: "all"
+    });
+  }, { scope: container });
 
   return (
-    <div className="min-h-screen bg-black relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-black relative overflow-hidden font-sans" ref={container}>
       {/* Video Background */}
       <div className="absolute inset-0 z-0 pointer-events-none">
          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black z-10" />
@@ -534,7 +627,7 @@ const DropshippingCalculator = () => {
       <div className="relative z-10 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="grid md:grid-cols-2 gap-4 items-center mb-8">
+        <div className="grid md:grid-cols-2 gap-4 items-center mb-8 header-animate">
           <div className="flex justify-center md:justify-start">
              <img 
                 src={logo} 
@@ -551,7 +644,7 @@ const DropshippingCalculator = () => {
 
         <div className="grid md:grid-cols-2 gap-6">
           {/* Painel de Entrada */}
-          <Card className="shadow-xl border-gray-100">
+          <Card className="shadow-xl border-gray-100 animate-on-scroll">
             <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
               <Calculator className="w-6 h-6 text-blue-600" />
               <CardTitle className="text-2xl font-bold text-gray-800 font-iceland">Dados do Produto</CardTitle>
@@ -618,7 +711,7 @@ const DropshippingCalculator = () => {
                   Markup
                 </Label>
                 <Select value={markupMultiplier} onValueChange={setMarkupMultiplier}>
-                  <SelectTrigger>
+                  <SelectTrigger id="markupMultiplier">
                     <SelectValue placeholder="Selecione o markup" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1069,7 +1162,7 @@ const DropshippingCalculator = () => {
           </Card>
 
           {/* Painel de Resultados */}
-          <Card className={`${calculations ? 'bg-[#d91c42] border-none' : 'bg-gray-500 border-none'} shadow-xl text-white transition-all duration-500 relative overflow-hidden`}>
+          <Card className={`${calculations ? 'bg-[#d91c42] border-none' : 'bg-gray-500 border-none'} shadow-xl text-white transition-all duration-500 relative overflow-hidden animate-on-scroll`}>
             <div className="absolute inset-0 z-0">
                 <img src={contactBg} alt="Background" className="w-full h-full object-cover opacity-20" />
                 <div className="absolute inset-0 bg-black/40" />
@@ -1084,7 +1177,7 @@ const DropshippingCalculator = () => {
               <div className="space-y-4">
                 {/* Preço de Venda Sugerido */}
                 <div className={`
-                    rounded-xl p-5 border shadow-sm transition-colors duration-300
+                    rounded-xl p-5 border shadow-sm transition-colors duration-300 animate-on-scroll
                     ${calculations.marginStatus === 'negative' ? 'bg-red-600 border-red-500' : 
                       calculations.marginStatus === 'low' ? 'bg-yellow-400 border-yellow-500' :
                       calculations.marginStatus === 'excellent' ? 'bg-[#25f4ee] border-[#20d8d2]' :
@@ -1093,28 +1186,28 @@ const DropshippingCalculator = () => {
                 `}>
                     <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                         <div>
-                            <p className={`text-sm mb-1 font-iceland ${
-                                calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                            <p className={`text-sm mb-1 font-iceland font-bold ${
+                                calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                             }`}>Preço de Venda Sugerido</p>
                             
                             {productName && (
                                 <p className={`text-lg font-semibold mb-1 ${
-                                    calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/80'
+                                    calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                                 }`}>{productName}</p>
                             )}
                             
-                            <p className={`text-4xl font-bold ${
+                            <p className={`text-5xl font-bold ${
                                 calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                             }`}>R$ {calculations.suggestedPrice}</p>
                             
-                            <p className={`text-xs mt-2 ${
-                                calculations.marginStatus === 'negative' ? 'text-white/70' : 'text-black/60'
+                            <p className={`text-xs mt-2 font-medium ${
+                                calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/80'
                             }`}>{calculations.taxDescription}</p>
                         </div>
                         {calculations.manualPrice > 0 && (
                              <div className="text-left md:text-right">
-                                <p className={`text-sm mb-1 ${
-                                    calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                <p className={`text-sm mb-1 font-bold ${
+                                    calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                                 }`}>Seu Preço</p>
                                 <p className={`text-3xl font-bold ${
                                     calculations.marginStatus === 'negative' ? 'text-yellow-300' : 'text-black'
@@ -1125,15 +1218,15 @@ const DropshippingCalculator = () => {
                     
                     {calculations.manualPrice > 0 && (
                         <div className={`mt-4 pt-4 border-t flex flex-col md:flex-row justify-between items-center gap-2 ${
-                            calculations.marginStatus === 'negative' ? 'border-white/10' : 'border-black/10'
+                            calculations.marginStatus === 'negative' ? 'border-white/20' : 'border-black/10'
                         }`}>
                             <div>
-                                <p className={`text-xs ${
-                                    calculations.marginStatus === 'negative' ? 'text-white/60' : 'text-black/60'
+                                <p className={`text-xs font-bold ${
+                                    calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/70'
                                 }`}>
                                     {calculations.discountApplied >= 0 ? 'Desconto Aplicado' : 'Acréscimo Aplicado'}
                                 </p>
-                                <p className={`font-semibold ${
+                                <p className={`font-bold ${
                                     calculations.marginStatus === 'negative' 
                                         ? (calculations.discountApplied < 0 ? 'text-green-300' : 'text-white')
                                         : (calculations.discountApplied < 0 ? 'text-green-700' : 'text-black')
@@ -1142,8 +1235,8 @@ const DropshippingCalculator = () => {
                                 </p>
                             </div>
                             <div className="text-left md:text-right">
-                                <p className={`text-xs font-medium ${
-                                    calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                <p className={`text-xs font-bold ${
+                                    calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/70'
                                 }`}>
                                     Valor Recomendado {
                                         marketplace === 'shopee' ? 'Shopee' : 
@@ -1160,12 +1253,12 @@ const DropshippingCalculator = () => {
                     
                     {calculations.competitor > 0 && !calculations.manualPrice && (
                         <div className={`mt-4 pt-4 border-t ${
-                            calculations.marginStatus === 'negative' ? 'border-white/10' : 'border-black/10'
+                            calculations.marginStatus === 'negative' ? 'border-white/20' : 'border-black/10'
                         }`}>
                              <div className="flex flex-col md:flex-row justify-between items-center gap-2">
                                 <div className="text-left">
-                                    <p className={`text-xs font-medium ${
-                                        calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                    <p className={`text-xs font-bold ${
+                                        calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/70'
                                     }`}>
                                         Valor Recomendado {
                                             marketplace === 'shopee' ? 'Shopee' : 
@@ -1178,8 +1271,8 @@ const DropshippingCalculator = () => {
                                     }`}>R$ {calculations.recommendedValue}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                     <Label htmlFor="competitorMarkup" className={`text-xs ${
-                                         calculations.marginStatus === 'negative' ? 'text-white/80' : 'text-black/60'
+                                     <Label htmlFor="competitorMarkup" className={`text-xs font-bold ${
+                                         calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/70'
                                      }`}>Markup Concorrência:</Label>
                                      <div className="flex items-center gap-2">
                                          <Input 
@@ -1190,12 +1283,12 @@ const DropshippingCalculator = () => {
                                             step="0.01" 
                                             min="1.10" 
                                             max="1.25"
-                                            className={`h-8 w-20 text-xs bg-transparent border ${
+                                            className={`h-8 w-20 text-xs bg-transparent border font-bold ${
                                                 calculations.marginStatus === 'negative' ? 'border-white/30 text-white placeholder-white/50' : 'border-black/20 text-black placeholder-black/50'
                                             }`}
                                          />
-                                         <span className={`text-xs ${
-                                             calculations.marginStatus === 'negative' ? 'text-white/70' : 'text-black/50'
+                                         <span className={`text-xs font-bold ${
+                                             calculations.marginStatus === 'negative' ? 'text-white/90' : 'text-black/70'
                                          }`}>x</span>
                                      </div>
                                 </div>
@@ -1283,29 +1376,29 @@ const DropshippingCalculator = () => {
                     <span className="font-semibold text-red-200">- R$ {calculations.totalFees}</span>
                   </div>
 
-                  <div className={`flex justify-between items-center py-3 rounded-lg px-3 mt-2 border shadow-lg ${
+                  <div className={`flex justify-between items-center py-4 rounded-lg px-4 mt-2 border shadow-lg animate-on-scroll ${
                      calculations.marginStatus === 'negative' ? 'bg-red-600 border-red-500' :
                      calculations.marginStatus === 'excellent' ? 'bg-[#25f4ee] border-[#20d8d2]' :
-                     'bg-green-600 border-green-500'
+                     'bg-[#DCFCE7] border-green-200'
                    }`}>
-                     <span className={`font-semibold font-iceland ${
-                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     <span className={`font-bold font-iceland text-xl ${
+                         calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                      }`}>Lucro Líquido</span>
-                     <span className={`text-2xl font-bold ${
-                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     <span className={`text-4xl font-bold ${
+                         calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                      }`}>R$ {calculations.netRevenue}</span>
                    </div>
 
-                   <div className={`flex justify-between items-center py-3 rounded-lg px-3 border shadow-lg ${
+                   <div className={`flex justify-between items-center py-4 rounded-lg px-4 border shadow-lg animate-on-scroll ${
                      calculations.marginStatus === 'negative' ? 'bg-red-600 border-red-500' :
                      calculations.marginStatus === 'excellent' ? 'bg-[#25f4ee] border-[#20d8d2]' :
-                     'bg-green-600 border-green-500'
+                     'bg-[#DCFCE7] border-green-200'
                    }`}>
-                     <span className={`font-semibold font-iceland ${
-                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     <span className={`font-bold font-iceland text-xl ${
+                         calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                      }`}>Margem de Lucro</span>
-                     <span className={`text-2xl font-bold ${
-                         calculations.marginStatus === 'excellent' ? 'text-black' : 'text-white'
+                     <span className={`text-4xl font-bold ${
+                         calculations.marginStatus === 'negative' ? 'text-white' : 'text-black'
                      }`}>{calculations.actualMargin}%</span>
                    </div>
                 </div>
@@ -1366,7 +1459,7 @@ const DropshippingCalculator = () => {
 
         {/* Resultados das Variações */}
         {variations.length > 0 && (
-          <Card className="mt-8 shadow-xl bg-black/40 backdrop-blur-md border-white/20">
+          <Card className="mt-8 shadow-xl bg-black/40 backdrop-blur-md border-white/20 animate-on-scroll">
             <CardHeader>
               <CardTitle className="text-xl font-oxanium text-white/90">Resultados das Variações</CardTitle>
             </CardHeader>
@@ -1431,14 +1524,11 @@ const DropshippingCalculator = () => {
         )}
 
         {/* Tabela de Referência */}
-        <Card className="mt-8 shadow-xl border-gray-100">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl font-bold text-gray-800 font-iceland">
-              <Package className="w-5 h-5 text-[#fe2c55]" />
-              Tabela de Margem Recomendada por Faixa de Preço (Shopee)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <CollapsibleSection 
+          title="Tabela de Margem Recomendada por Faixa de Preço (Shopee)" 
+          icon={<Package className="w-5 h-5 text-[#fe2c55]" />}
+          className="animate-on-scroll"
+        >
             <Table>
               <TableHeader>
                 <TableRow className="border-b-2 border-gray-200">
@@ -1475,18 +1565,14 @@ const DropshippingCalculator = () => {
                 </TableRow>
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Tabela de Referência Mercado Livre */}
-        <Card className="mt-8 shadow-xl border-gray-100">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl font-bold text-gray-800 font-iceland">
-              <Package className="w-5 h-5 text-yellow-500" />
-              Tabela de Margem Recomendada (Mercado Livre)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <CollapsibleSection 
+          title="Tabela de Margem Recomendada (Mercado Livre)" 
+          icon={<Package className="w-5 h-5 text-yellow-500" />}
+          className="animate-on-scroll"
+        >
             <Table>
               <TableHeader>
                 <TableRow className="border-b-2 border-gray-200">
@@ -1511,16 +1597,14 @@ const DropshippingCalculator = () => {
                 </TableRow>
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Informações Adicionais */}
-        <div className="mt-6 bg-pink-50 rounded-xl p-5 border border-pink-200">
-          <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-[#fe2c55]" />
-            Informações Importantes sobre os Tipos de Anúncio
-          </h4>
-          
+        <CollapsibleSection 
+          title="Informações Importantes sobre os Tipos de Anúncio" 
+          icon={<AlertCircle className="w-5 h-5 text-[#fe2c55]" />}
+          className="bg-pink-50 border-pink-200 animate-on-scroll"
+        >
           <div className="space-y-4 text-sm text-gray-700">
             <div className="bg-white rounded-lg p-4 border border-pink-100">
               <h5 className="font-bold text-[#fe2c55] mb-2">📦 Anúncio Grátis (Mercado Livre)</h5>
@@ -1572,7 +1656,7 @@ const DropshippingCalculator = () => {
               </ul>
             </div>
           </div>
-        </div>
+        </CollapsibleSection>
       </div>
       </div>
     </div>
