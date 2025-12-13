@@ -1892,28 +1892,8 @@ const DropshippingCalculator = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {variations.map((v) => {
-                    const metrics = calculateMetrics(
-                      parseFloat(v.cost),
-                      parseFloat(packagingCost) || 0,
-                      parseFloat(v.markup),
-                      marketplace,
-                      category,
-                      adType,
-                      shippingOption,
-                      parseFloat(extraCommission) || 0,
-                      useShopeeAds,
-                      parseFloat(adsCPC) || 0,
-                      parseFloat(dailyBudget) || 10,
-                      parseFloat(salesQuantity) || 0,
-                      parseFloat(gatewayFee) || 0,
-                      0, // Manual Price 0 to force calculation
-                      parseFloat(competitorPrice) || 0,
-                      parseFloat(competitorMarkup) || 1.10,
-                      parseFloat(tiktokCommission) || 0,
-                      parseFloat(wordpressShipping) || 0,
-                      operationMode === 'dropshipping' ? (parseFloat(emergencyReserve) || 0) : 0
-                    );
+                  {variationCalculations.map((v) => {
+                    const metrics = v.metrics;
                     
                     return (
                       <TableRow key={v.id} className="border-white/10 hover:bg-white/5">
@@ -1924,7 +1904,7 @@ const DropshippingCalculator = () => {
                           metrics.marginStatus === 'negative' ? 'text-red-400' : 
                           metrics.marginStatus === 'excellent' ? 'text-[#25f4ee]' : 'text-green-400'
                         }`}>
-                          R$ {metrics.netProfit}
+                          R$ {metrics.netRevenue}
                         </TableCell>
                         <TableCell className={`text-center font-bold ${
                            metrics.marginStatus === 'negative' ? 'text-red-400' : 

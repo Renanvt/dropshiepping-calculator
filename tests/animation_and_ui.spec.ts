@@ -58,7 +58,7 @@ test.describe('Animation and UI Improvements', () => {
     // Click trigger, then click option.
     
     // Find the trigger
-    const markupTrigger = page.locator('button[role="combobox"]').filter({ hasText: /1.5|Markup/ }).first();
+    await page.locator('button[role="combobox"]').filter({ hasText: /1.5|Markup/ }).first();
     // Or finding by label
     // The SelectTrigger might not have the ID, the Label has htmlFor.
     
@@ -70,19 +70,20 @@ test.describe('Animation and UI Improvements', () => {
     await page.getByRole('option', { name: '1.5x' }).click();
 
     // Check Suggested Price Panel
-    const suggestedPricePanel = page.locator('text=Preço de Venda Sugerido').locator('..').locator('..').locator('..');
+    page.locator('text=Preço de Venda Sugerido').locator('..').locator('..').locator('..');
     
     // Check for correct background class (default/good should be light green #DCFCE7 or similar)
     // Since we used dynamic classes, we can check for the presence of the class or computed style.
     // Our code: 'bg-[#DCFCE7] border-green-200'
-    // Playwright might not see the hex code in class list exactly if Tailwind compiles it, but it should be there.
+    // Playwright interacting with Radix UI Select:
+    // Click trigger, then click option.
     
     // Check Profit/Margin Panel
     const profitLabel = page.locator('text=Lucro Líquido');
     await expect(profitLabel).toHaveClass(/font-bold/);
     await expect(profitLabel).toHaveClass(/text-xl/); // We added text-xl
     
-    const profitValue = page.locator('text=R$').nth(1); // Approximate
+    page.locator('text=R$').nth(1); // Approximate
     // Better locator:
     const profitContainer = page.locator('text=Lucro Líquido').locator('..');
     await expect(profitContainer).toHaveClass(/animate-on-scroll/);

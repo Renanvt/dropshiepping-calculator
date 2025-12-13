@@ -55,7 +55,6 @@ test('Dropshipping Calculator Functionality with Shadcn UI', async ({ page }) =>
   const budgetInput = page.locator('input[placeholder="10.00"]');
   await budgetInput.fill('20');
   
-  const salesInput = page.locator('input[placeholder="0"]').first(); // Might be multiple inputs with 0 placeholder, need to be careful.
   // The sales input is inside the ads section.
   // Let's use a better selector if possible or rely on order.
   // The structure is: CPC, Budget, Sales.
