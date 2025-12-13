@@ -53,9 +53,29 @@ test('Verify Latest Features: Discount/Acréscimo, Packaging Cost, and Variation
   await expect(page.getByText('(Tarifa Fixa Shopee)')).toBeVisible();
 
   // Switch to Mercado Livre
-  // Use filter to find the specific combobox with text 'Shopee' (current value)
-  // Note: We switched to Shopee at the start of test, so it is 'Shopee' now.
-  const marketplaceSelect = page.getByRole('combobox').filter({ hasText: 'Shopee' });
+  // The locator is tricky because 'div' filter matches parent containers too.
+  // Let's target the exact structure:
+  // <div class="grid ..."> <Label>Marketplace</Label> <Select>...</Select> </div>
+  // We can select the div that DIRECTLY contains the label "Marketplace".
+  // But Playwright's filter matches if *any* descendant has text.
+  // Let's use the nth match or a more precise chain.
+  // The Marketplace select is the 4th one (Modalidade, Delivery, Marketplace, Markup...).
+  // Wait, Markup has ID 'markupMultiplier'.
+  // Marketplace does NOT have an ID on the trigger (SelectTrigger).
+  // But we can find the label "Marketplace", get its parent, and find the button inside.
+  // <div class="grid ...">
+  //   <Label>Marketplace</Label>
+  //   <Select ...> <SelectTrigger> ... </SelectTrigger> </Select>
+  // </div>
+  // So: page.locator('div', { has: page.getByText('Marketplace', { exact: true }) }).locator('button[role="combobox"]')
+  // But since the parent div is inside CardContent, checking 'div' might still be too broad if not scoped.
+  // However, the "grid w-full max-w-sm" div is specific enough if we filter by "Marketplace" label text ONLY inside it.
+  
+  // Actually, let's just use the fact that it currently has value "Shopee" and is NOT the delivery mode "Shopee Envios".
+  // The button text is exactly "Shopee".
+  // The other one is "Shopee Envios".
+  const marketplaceSelect = page.getByRole('combobox').filter({ hasText: /^Shopee$/ });
+  
   await marketplaceSelect.click();
   await expect(page.getByRole('option', { name: 'Mercado Livre' })).toBeVisible();
   await page.getByRole('option', { name: 'Mercado Livre' }).click();

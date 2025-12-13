@@ -133,10 +133,25 @@ const DropshippingCalculator = () => {
   const [adType, setAdType] = useState('classico'); // Para Mercado Livre
   const [hasReputation, setHasReputation] = useState(false);
   
+  // New States for Mode and Logic
+  const [operationMode, setOperationMode] = useState('armazem_alob'); // 'armazem_alob' | 'dropshipping'
+  const [deliveryMode, setDeliveryMode] = useState('shopee_envios'); // 'tiktok' | 'shopee_envios' | 'mercado_envios' | 'aliexpress'
+  const [emergencyReserve, setEmergencyReserve] = useState('');
+  const [workingCapital, setWorkingCapital] = useState('');
+  const [returnRate, setReturnRate] = useState('33.33'); // Default 33.33%
+  const [paidTraffic, setPaidTraffic] = useState('0'); // New Paid Traffic State
+
   // Payment Gateway Configuration
   const [gatewayBank, setGatewayBank] = useState('mercadopago'); // 'mercadopago' | 'nubank'
   const [gatewayMethod, setGatewayMethod] = useState('pix'); // 'pix' | 'credit' | 'debit' | 'credit_sight' | 'pix_credit'
   const [gatewayInstallments, setGatewayInstallments] = useState('1');
+
+  // Auto-select Delivery Mode for Wordpress in Armazem Alob
+  useMemo(() => {
+    if (operationMode === 'armazem_alob' && marketplace === 'wordpress') {
+      setDeliveryMode('aliexpress');
+    }
+  }, [operationMode, marketplace]);
 
   // Initial default handling for Nubank
   useMemo(() => {
@@ -307,12 +322,15 @@ const DropshippingCalculator = () => {
   };
 
   const addVariation = () => {
-    if (variationName && variationCost && variationMarkup) {
+    // If no variation markup provided, use main markup multiplier as default
+    const effectiveMarkup = variationMarkup || markupMultiplier;
+    
+    if (variationName && variationCost && effectiveMarkup) {
       setVariations([...variations, {
         id: Date.now().toString(),
         name: variationName,
         cost: variationCost,
-        markup: variationMarkup
+        markup: effectiveMarkup
       }]);
       setVariationName('');
       setVariationCost('');
@@ -343,12 +361,16 @@ const DropshippingCalculator = () => {
       competitorPriceVal: number,
       competitorMarkupVal: number,
       tiktokCommVal: number,
-      wpShippingVal: number
+      wpShippingVal: number,
+      emergencyReserveVal: number,
+      returnRateVal: number,
+      paidTrafficVal: number
   ) => {
-    // Total Base Cost for Calculation (Product + Packaging)
+    // Total Base Cost for Calculation (Product + Packaging + Emergency Reserve)
     // For Wordpress, include shipping cost in the base if defined? Or treat as a fee?
     // User said "adicione Frete com o valor padrão 0" for Wordpress.
     // Usually shipping is a cost. Let's add it to totalCost if marketplace is wordpress.
+    // UPDATE: emergencyReserveVal should NOT affect totalCost for pricing.
     const totalCost = baseCost + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0);
 
     let marketplaceFee = 0;
@@ -552,6 +574,7 @@ const DropshippingCalculator = () => {
     }
 
     const gatewayCost = effectiveSellingPrice * (gatewayFeeVal / 100);
+    const paidTrafficCost = effectiveSellingPrice * (paidTrafficVal / 100);
     
     // Ads Cost Calculation
     let adsCostPerSale = 0;
@@ -560,8 +583,8 @@ const DropshippingCalculator = () => {
     }
 
     const marketplaceCost = calculatedCommission;
-    // Net Revenue = Effective Price - Commission - Fixed Fee - Gateway - Total Cost - Ads
-    const netRevenue = effectiveSellingPrice - marketplaceCost - finalFixedFee - gatewayCost - totalCost - adsCostPerSale;
+    // Net Revenue = Effective Price - Commission - Fixed Fee - Gateway - Total Cost - Ads - Paid Traffic
+    const netRevenue = effectiveSellingPrice - marketplaceCost - finalFixedFee - gatewayCost - totalCost - adsCostPerSale - paidTrafficCost;
     const actualMargin = (netRevenue / effectiveSellingPrice) * 100;
     
     // Breakeven Analysis for Ads
@@ -598,6 +621,7 @@ const DropshippingCalculator = () => {
     return {
       cost: baseCost,
       packagingCost: pkgCost.toFixed(2),
+      emergencyReserve: emergencyReserveVal.toFixed(2),
       totalCost,
       suggestedPrice: suggestedPrice.toFixed(2),
       marketplaceFee: marketplaceFee.toFixed(0),
@@ -605,8 +629,13 @@ const DropshippingCalculator = () => {
       fixedFee: finalFixedFee.toFixed(2), // Use finalFixedFee based on effective price
       gatewayCost: gatewayCost.toFixed(2),
       gatewayFee: gatewayFeeVal,
+      paidTrafficCost: paidTrafficCost.toFixed(2),
+      paidTrafficFee: paidTrafficVal,
       adsCostPerSale: adsCostPerSale.toFixed(2),
-      totalFees: (marketplaceCost + finalFixedFee + gatewayCost + adsCostPerSale + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0)).toFixed(2),
+      // totalFees does NOT include emergencyReserveVal anymore for calculation, but maybe for display?
+      // User said "Reserva de emergência não deve alterar e nem calcular nada em resultados de precificação".
+      // So I remove it from totalFees too.
+      totalFees: (marketplaceCost + finalFixedFee + gatewayCost + paidTrafficCost + adsCostPerSale + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0)).toFixed(2),
       netRevenue: netRevenue.toFixed(2),
       actualMargin: actualMargin.toFixed(1),
       recommendedMargin,
@@ -617,7 +646,10 @@ const DropshippingCalculator = () => {
       competitor: competitorPriceVal,
       breakevenCPA: breakevenCPA.toFixed(2),
       reverseCR: reverseCR.toFixed(2),
-      marginStatus // Include status for UI coloring
+      marginStatus, // Include status for UI coloring
+      emergencyReserve: emergencyReserveVal.toFixed(2),
+      returnRate: returnRateVal,
+      lossPerReturn: (totalCost + adsCostPerSale).toFixed(2) // Estimated Loss = Cost + Pkg + Ads? Or just Total Cost. Using Total Cost + Ads is safer.
     };
   };
 
@@ -637,11 +669,14 @@ const DropshippingCalculator = () => {
     const compMarkup = parseFloat(competitorMarkup) || 1.1;
     const tiktokComm = parseFloat(tiktokCommission) || 6;
     const wpShipping = parseFloat(wordpressShipping) || 0;
+    const emergency = operationMode === 'dropshipping' ? (parseFloat(emergencyReserve) || 0) : 0;
+    const rRate = parseFloat(returnRate) || 33.33;
+    const pTraffic = parseFloat(paidTraffic) || 0;
 
     return calculateMetrics(
-        cost, pkg, markupMult, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, manual, competitor, compMarkup, tiktokComm, wpShipping
+        cost, pkg, markupMult, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, manual, competitor, compMarkup, tiktokComm, wpShipping, emergency, rRate, pTraffic
     );
-  }, [costPrice, packagingCost, marketplace, category, shippingOption, adType, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, markupMultiplier, manualSellingPrice, competitorPrice, competitorMarkup, hasVariations, extraCommission, tiktokCommission, wordpressShipping]);
+  }, [costPrice, packagingCost, marketplace, category, shippingOption, adType, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, markupMultiplier, manualSellingPrice, competitorPrice, competitorMarkup, hasVariations, extraCommission, tiktokCommission, wordpressShipping, operationMode, emergencyReserve, returnRate, paidTraffic]);
 
   // Calculate variations if any
   const variationCalculations = useMemo(() => {
@@ -657,6 +692,9 @@ const DropshippingCalculator = () => {
       const compMarkup = parseFloat(competitorMarkup) || 1.1;
       const tiktokComm = parseFloat(tiktokCommission) || 6;
       const wpShipping = parseFloat(wordpressShipping) || 0;
+      const emergency = operationMode === 'dropshipping' ? (parseFloat(emergencyReserve) || 0) : 0;
+      const rRate = parseFloat(returnRate) || 33.33;
+      const pTraffic = parseFloat(paidTraffic) || 0;
 
       return variations.map(v => {
           const vCost = parseFloat(v.cost) || 0;
@@ -665,11 +703,11 @@ const DropshippingCalculator = () => {
           return {
               ...v,
               metrics: calculateMetrics(
-                  vCost, pkg, vMarkup, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, 0, competitor, compMarkup, tiktokComm, wpShipping
+                  vCost, pkg, vMarkup, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, 0, competitor, compMarkup, tiktokComm, wpShipping, emergency, rRate, pTraffic
               )
           };
       });
-  }, [variations, packagingCost, marketplace, category, shippingOption, adType, extraCommission, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, competitorPrice, competitorMarkup, hasVariations, tiktokCommission, wordpressShipping]);
+  }, [variations, packagingCost, marketplace, category, shippingOption, adType, extraCommission, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, competitorPrice, competitorMarkup, hasVariations, tiktokCommission, wordpressShipping, operationMode, emergencyReserve, returnRate, paidTraffic]);
 
   useGSAP(() => {
     // Animate Header
@@ -689,6 +727,17 @@ const DropshippingCalculator = () => {
       ease: "power3.out",
       delay: 0.2,
       clearProps: "all"
+    });
+
+    // Animate Form Elements with Fade In
+    gsap.from(".animate-fadeIn", {
+        opacity: 0,
+        x: -20,
+        duration: 0.5,
+        stagger: 0.1,
+        ease: "power2.out",
+        delay: 0.5,
+        clearProps: "all"
     });
   }, { scope: container });
 
@@ -735,7 +784,7 @@ const DropshippingCalculator = () => {
             </CardHeader>
             <CardContent className="space-y-5 pt-4">
               {/* Nome do Produto */}
-              <div className="grid w-full max-w-sm items-center gap-1.5">
+              <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
                 <Label htmlFor="productName" className="text-sm font-semibold text-gray-800">
                   Nome do Produto
                 </Label>
@@ -747,9 +796,120 @@ const DropshippingCalculator = () => {
                 />
               </div>
 
+              {/* Modalidade */}
+              <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                <Label className="text-sm font-semibold text-gray-800">
+                  Modalidade
+                </Label>
+                <Select value={operationMode} onValueChange={setOperationMode}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a modalidade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="armazem_alob">Armazém Alob</SelectItem>
+                    <SelectItem value="dropshipping">Dropshipping</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Chance de Devolução */}
+              <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                <Label htmlFor="returnRate" className="text-sm font-semibold text-gray-800">
+                  Chance de devolução (%)
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="returnRate"
+                    type="number"
+                    value={returnRate}
+                    onChange={(e) => setReturnRate(e.target.value)}
+                    className="pl-3"
+                    placeholder="33.33"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Campos Condicionais da Modalidade */}
+              {operationMode === 'armazem_alob' && (
+                <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                  <Label className="text-sm font-semibold text-gray-800">
+                    Modalidade de entrega
+                  </Label>
+                  <Select 
+                    value={deliveryMode} 
+                    onValueChange={setDeliveryMode} 
+                    disabled={marketplace === 'wordpress'}
+                  >
+                    <SelectTrigger className={marketplace === 'wordpress' ? 'bg-gray-100' : ''}>
+                      <SelectValue placeholder="Selecione a entrega" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tiktok">Tiktokshop</SelectItem>
+                      <SelectItem value="shopee_envios">Shopee Envios</SelectItem>
+                      <SelectItem value="mercado_envios">Mercado Envios</SelectItem>
+                      <SelectItem value="aliexpress">AliExpress Standard Ship</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {operationMode === 'dropshipping' && (
+                 <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                    <Label htmlFor="emergencyReserve" className="text-sm font-semibold text-gray-800">
+                      Reserva de emergência (R$)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
+                        R$
+                      </span>
+                      <Input
+                        id="emergencyReserve"
+                        type="number"
+                        value={emergencyReserve}
+                        onChange={(e) => setEmergencyReserve(e.target.value)}
+                        className="pl-10"
+                        placeholder="0.00"
+                        step="0.01"
+                      />
+                    </div>
+                 </div>
+              )}
+
               {/* Preço de Custo */}
-              <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="costPrice" className="text-sm font-semibold text-gray-800">
+              {operationMode === 'dropshipping' && (
+                 <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="workingCapital" className="text-sm font-semibold text-gray-800">
+                        Capital de Giro
+                      </Label>
+                      <div className="group relative">
+                        <AlertCircle className="w-4 h-4 text-gray-400 cursor-help" />
+                        <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                          Valor necessário disponível para compra do produto após venda
+                          <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
+                        R$
+                      </span>
+                      <Input
+                        id="workingCapital"
+                        type="number"
+                        value={workingCapital}
+                        onChange={(e) => setWorkingCapital(e.target.value)}
+                        className="pl-10"
+                        placeholder="0.00"
+                        step="0.01"
+                      />
+                    </div>
+                 </div>
+              )}
+
+              <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                <Label htmlFor="costPrice" className="text-base font-bold text-[#fe2c55]">
                   Preço de Custo do Fornecedor
                 </Label>
                 <div className="relative">
@@ -761,7 +921,7 @@ const DropshippingCalculator = () => {
                     type="number"
                     value={costPrice}
                     onChange={(e) => setCostPrice(e.target.value)}
-                    className="pl-10 text-lg"
+                    className="pl-10 text-xl font-bold border-[#fe2c55] focus:border-[#fe2c55]"
                     placeholder="0,00"
                     step="0.01"
                   />
@@ -769,7 +929,7 @@ const DropshippingCalculator = () => {
               </div>
 
               {/* Preço de Venda Manual */}
-              <div className="grid w-full max-w-sm items-center gap-1.5">
+              <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
                 <Label htmlFor="manualSellingPrice" className="text-base font-bold text-blue-700">
                   Preço de venda
                 </Label>
@@ -1039,21 +1199,37 @@ const DropshippingCalculator = () => {
               </div>
 
               {/* Taxa de Gateway (Display/Manual Override) */}
-              <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="gatewayFee" className="text-sm font-semibold text-gray-800">
-                  Taxa de Gateway de Pagamento (%)
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="gatewayFee"
-                    type="number"
-                    value={gatewayFee}
-                    onChange={(e) => setGatewayFee(e.target.value)}
-                    placeholder="0.00"
-                    className="bg-gray-50"
-                  />
-                </div>
-              </div>
+               <div className="grid w-full max-w-sm items-center gap-1.5">
+                 <Label htmlFor="gatewayFee" className="text-sm font-semibold text-gray-800">
+                   Taxa de Gateway de Pagamento (%)
+                 </Label>
+                 <div className="relative">
+                   <Input
+                     id="gatewayFee"
+                     type="number"
+                     value={gatewayFee}
+                     onChange={(e) => setGatewayFee(e.target.value)}
+                     placeholder="0.00"
+                     className="bg-gray-50"
+                   />
+                 </div>
+               </div>
+
+               {/* Tráfego Pago */}
+               <div className="grid w-full max-w-sm items-center gap-1.5 animate-fadeIn">
+                 <Label htmlFor="paidTraffic" className="text-sm font-semibold text-gray-800">
+                   Tráfego Pago (%)
+                 </Label>
+                 <div className="relative">
+                   <Input
+                     id="paidTraffic"
+                     type="number"
+                     value={paidTraffic}
+                     onChange={(e) => setPaidTraffic(e.target.value)}
+                     placeholder="0.00"
+                   />
+                 </div>
+               </div>
 
               {/* Custos Extras */}
               <div className="grid w-full max-w-sm items-center gap-1.5">
@@ -1649,6 +1825,44 @@ const DropshippingCalculator = () => {
                         </TableBody>
                     </Table>
                 </div>
+
+                {/* Tabela de Perdas Estimadas */}
+                <div className="bg-white rounded-xl overflow-hidden shadow-sm mt-4 text-gray-800">
+                    <div className="bg-red-600 p-2 text-center">
+                        <p className="text-white font-bold">Projeção de Perdas</p>
+                    </div>
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-red-100 hover:bg-red-100 border-b border-red-200">
+                                <TableHead className="text-center font-bold text-red-800 h-8">Unidades Devolvidas</TableHead>
+                                <TableHead className="text-center font-bold text-red-800 h-8">Perdas Estimadas</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {[10, 25, 50, 100, 250, 500, 1000].map((qty) => {
+                                // Calculate returned units based on return rate
+                                const returnedUnits = Math.round(qty * (calculations.returnRate / 100));
+                                // Calculate loss: returned units * loss per return
+                                const totalLoss = returnedUnits * parseFloat(calculations.lossPerReturn);
+                                
+                                return (
+                                <TableRow key={qty} className="hover:bg-red-50 border-b border-gray-100 last:border-0">
+                                    <TableCell className="text-center py-2 font-medium">
+                                        <span className="font-bold">{returnedUnits}</span>
+                                    </TableCell>
+                                    <TableCell className="text-center py-2 font-bold text-red-700">
+                                        - R$ {totalLoss.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </TableCell>
+                                </TableRow>
+                            )})}
+                        </TableBody>
+                    </Table>
+                    {parseFloat(calculations.emergencyReserve) > 0 && (
+                        <div className="p-3 bg-red-50 border-t border-red-100 text-center text-xs text-red-800">
+                            <span className="font-bold">Reserva de Emergência Disponível (Total):</span> R$ {(parseFloat(calculations.emergencyReserve) * 50).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (para 50 unidades)
+                        </div>
+                    )}
+                </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -1700,7 +1914,8 @@ const DropshippingCalculator = () => {
                       parseFloat(competitorPrice) || 0,
                       parseFloat(competitorMarkup) || 1.10,
                       parseFloat(tiktokCommission) || 0,
-                      parseFloat(wordpressShipping) || 0
+                      parseFloat(wordpressShipping) || 0,
+                      operationMode === 'dropshipping' ? (parseFloat(emergencyReserve) || 0) : 0
                     );
                     
                     return (
