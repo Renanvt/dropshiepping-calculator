@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 
 import logo from '../imgs/Logonome-alobexpress.png';
+import contactBg from '../imgs/contactbg.jpg';
 
 interface TaxRate {
   rate: number;
@@ -40,14 +41,15 @@ const DropshippingCalculator = () => {
 
   const [costPrice, setCostPrice] = useState('');
   const [manualSellingPrice, setManualSellingPrice] = useState('');
-  const [packagingCost, setPackagingCost] = useState(''); // New state for packaging/shipping costs
-  const [gatewayFee, setGatewayFee] = useState('');
+  const [packagingCost, setPackagingCost] = useState('2'); // Default 2
+  const [gatewayFee, setGatewayFee] = useState('5'); // Default 5
   
   const [markupMultiplier, setMarkupMultiplier] = useState('1.5');
   const [extraCommission, setExtraCommission] = useState('');
   
   const [marketplace, setMarketplace] = useState('mercadolivre');
   const [competitorPrice, setCompetitorPrice] = useState('');
+  const [competitorMarkup, setCompetitorMarkup] = useState('1.10');
   
   const [category, setCategory] = useState('eletronicos');
   const [shippingOption, setShippingOption] = useState('with'); // Para Shopee
@@ -188,7 +190,8 @@ const DropshippingCalculator = () => {
       currentSales: number,
       gatewayFeeVal: number,
       manualPriceVal: number,
-      competitorPriceVal: number
+      competitorPriceVal: number,
+      competitorMarkupVal: number
   ) => {
     // Total Base Cost for Calculation (Product + Packaging)
     const totalCost = baseCost + pkgCost;
@@ -332,6 +335,15 @@ const DropshippingCalculator = () => {
             ? `0% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`
             : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
         }
+    } else {
+         // Re-verify Fixed Fee for Automatic Markup in ML
+         if (currentMarketplace === 'mercadolivre') {
+             const fees = calculateFees(suggestedPrice);
+             fixedFee = fees.fixed;
+             taxDescription = currentAdType === 'gratis' 
+            ? `0% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`
+            : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
+         }
     }
 
     // Calculations based on Suggested Price
@@ -368,7 +380,7 @@ const DropshippingCalculator = () => {
     const discountApplied = manualPriceVal > 0 ? suggestedPrice - manualPriceVal : 0;
     
     // Recommended Value
-    const effectiveMarkup = markup > 0 ? markup : 1;
+    const effectiveMarkup = competitorMarkupVal > 0 ? competitorMarkupVal : 1.1;
     const recommendedValue = competitorPriceVal * effectiveMarkup;
 
     return {
@@ -409,11 +421,12 @@ const DropshippingCalculator = () => {
     const gateway = parseFloat(gatewayFee) || 0;
     const manual = parseFloat(manualSellingPrice) || 0;
     const competitor = parseFloat(competitorPrice) || 0;
+    const compMarkup = parseFloat(competitorMarkup) || 1.1;
 
     return calculateMetrics(
-        cost, pkg, markupMult, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, manual, competitor
+        cost, pkg, markupMult, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, manual, competitor, compMarkup
     );
-  }, [costPrice, packagingCost, marketplace, category, shippingOption, adType, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, markupMultiplier, manualSellingPrice, competitorPrice, hasVariations, extraCommission]);
+  }, [costPrice, packagingCost, marketplace, category, shippingOption, adType, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, markupMultiplier, manualSellingPrice, competitorPrice, competitorMarkup, hasVariations, extraCommission]);
 
   // Calculate variations if any
   const variationCalculations = useMemo(() => {
@@ -426,6 +439,7 @@ const DropshippingCalculator = () => {
       const sales = parseFloat(salesQuantity) || 0;
       const gateway = parseFloat(gatewayFee) || 0;
       const competitor = parseFloat(competitorPrice) || 0;
+      const compMarkup = parseFloat(competitorMarkup) || 1.1;
 
       return variations.map(v => {
           const vCost = parseFloat(v.cost) || 0;
@@ -434,11 +448,11 @@ const DropshippingCalculator = () => {
           return {
               ...v,
               metrics: calculateMetrics(
-                  vCost, pkg, vMarkup, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, 0, competitor
+                  vCost, pkg, vMarkup, marketplace, category, adType, shippingOption, extra, useShopeeAds, cpc, budget, sales, gateway, 0, competitor, compMarkup
               )
           };
       });
-  }, [variations, packagingCost, marketplace, category, shippingOption, adType, extraCommission, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, competitorPrice, hasVariations]);
+  }, [variations, packagingCost, marketplace, category, shippingOption, adType, extraCommission, useShopeeAds, adsCPC, dailyBudget, salesQuantity, gatewayFee, competitorPrice, competitorMarkup, hasVariations]);
 
 
 
@@ -448,11 +462,16 @@ const DropshippingCalculator = () => {
         {/* Header */}
         <div className="grid md:grid-cols-2 gap-4 items-center mb-8">
           <div className="flex justify-center md:justify-start">
-             <img src={logo} alt="Alob Express" className="h-12 object-contain glitch-hover" />
+             <img 
+                src={logo} 
+                alt="Alob Express" 
+                className="h-12 object-contain glitch-hover cursor-pointer" 
+                onClick={() => window.location.reload()} 
+             />
           </div>
           <div className="text-center md:text-right">
              <p className="text-gray-300 text-xl font-medium font-iceland">Calculadora de Precificação Dropshipping Nacional</p>
-             <p className="text-sm text-gray-400 mt-1">Taxas reais atualizadas de Shopee e Mercado Livre 2024</p>
+             <p className="text-sm text-gray-400 mt-1">Taxas reais atualizadas de Marketplaces 2025</p>
           </div>
         </div>
 
@@ -935,7 +954,12 @@ const DropshippingCalculator = () => {
           </Card>
 
           {/* Painel de Resultados */}
-          <Card className={`${calculations ? 'bg-[#d91c42] border-none' : 'bg-gray-500 border-none'} shadow-xl text-white transition-all duration-500`}>
+          <Card className={`${calculations ? 'bg-[#d91c42] border-none' : 'bg-gray-500 border-none'} shadow-xl text-white transition-all duration-500 relative overflow-hidden`}>
+            <div className="absolute inset-0 z-0">
+                <img src={contactBg} alt="Background" className="w-full h-full object-cover opacity-20" />
+                <div className="absolute inset-0 bg-black/40" />
+            </div>
+            <div className="relative z-10">
             <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
               <TrendingUp className="w-6 h-6 text-white" />
               <CardTitle className="text-2xl font-bold text-white">Resultado da Precificação</CardTitle>
@@ -948,6 +972,9 @@ const DropshippingCalculator = () => {
                     <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                         <div>
                             <p className="text-sm text-white/80 mb-1">Preço de Venda Sugerido</p>
+                            {productName && (
+                                <p className="text-lg font-semibold text-white/90 mb-1">{productName}</p>
+                            )}
                             <p className="text-4xl font-bold">R$ {calculations.suggestedPrice}</p>
                             <p className="text-xs text-white/70 mt-2">{calculations.taxDescription}</p>
                         </div>
@@ -970,18 +997,80 @@ const DropshippingCalculator = () => {
                                 </p>
                             </div>
                             <div className="text-left md:text-right">
-                                <p className="text-xs text-white/60">Valor Recomendado {marketplace === 'shopee' ? 'Shopee' : 'Mercado Livre'}</p>
-                                <p className="font-semibold text-green-200">R$ {calculations.recommendedValue}</p>
+                                <p className="text-xs text-white/80 font-medium">Valor Recomendado {marketplace === 'shopee' ? 'Shopee' : 'Mercado Livre'}</p>
+                                <p className="font-bold text-white text-lg">R$ {calculations.recommendedValue}</p>
                             </div>
                         </div>
                     )}
+                    
+                    {calculations.competitor > 0 && !calculations.manualPrice && (
+                        <div className="mt-4 pt-4 border-t border-white/10">
+                             <div className="flex flex-col md:flex-row justify-between items-center gap-2">
+                                <div className="text-left">
+                                    <p className="text-xs text-white/80 font-medium">Valor Recomendado {marketplace === 'shopee' ? 'Shopee' : 'Mercado Livre'}</p>
+                                    <p className="font-bold text-white text-lg">R$ {calculations.recommendedValue}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                     <Label htmlFor="competitorMarkup" className="text-xs text-white/80">Markup Concorrência:</Label>
+                                     <div className="flex items-center gap-2">
+                                         <Input 
+                                            id="competitorMarkup"
+                                            type="number" 
+                                            value={competitorMarkup} 
+                                            onChange={(e) => setCompetitorMarkup(e.target.value)} 
+                                            step="0.01" 
+                                            min="1.10" 
+                                            max="1.25"
+                                            className="h-8 w-20 text-xs bg-white/20 border-white/30 text-white placeholder-white/50"
+                                         />
+                                         <span className="text-xs text-white/70">x</span>
+                                     </div>
+                                </div>
+                             </div>
+                        </div>
+                    )}
                 </div>
+
+                {/* Resultado das Variações */}
+                {variationCalculations.length > 0 && (
+                  <div className="grid md:grid-cols-2 gap-4 animate-fadeIn">
+                      {variationCalculations.map((v) => (
+                           <Card key={v.id} className="bg-gradient-to-br from-blue-600 to-indigo-600 border-none shadow-xl text-white">
+                              <CardHeader className="pb-2">
+                                  <CardTitle className="text-xl font-bold">{v.name}</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                                      <p className="text-sm text-white/80 mb-1">Preço de Venda Sugerido</p>
+                                      <p className="text-3xl font-bold">R$ {v.metrics.suggestedPrice}</p>
+                                      <p className="text-xs text-white/70 mt-2">{v.metrics.taxDescription}</p>
+                                  </div>
+                                  <div className="mt-4 space-y-2 text-sm">
+                                      <div className="flex justify-between py-1 font-bold">
+                                          <span>Lucro Líquido</span>
+                                          <span className="text-green-300">R$ {v.metrics.netRevenue}</span>
+                                      </div>
+                                      <div className="flex justify-between py-1 font-bold">
+                                          <span>Margem</span>
+                                          <span className="text-green-300">{v.metrics.actualMargin}%</span>
+                                      </div>
+                                  </div>
+                              </CardContent>
+                           </Card>
+                      ))}
+                  </div>
+                )}
 
                 {/* Detalhamento */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center py-2 border-b border-white/20">
                     <span className="text-white/80">Custos Embalagem</span>
-                    <span className="font-semibold text-red-200">- R$ {calculations.packagingCost.toFixed(2)}</span>
+                    <span className="font-semibold text-red-200">
+                        {parseFloat(calculations.packagingCost) > 0 
+                            ? `- R$ ${calculations.packagingCost}` 
+                            : `R$ ${calculations.packagingCost}`
+                        }
+                    </span>
                   </div>
                   
                   <div className="flex justify-between items-center py-2 border-b border-white/20">
@@ -1075,51 +1164,8 @@ const DropshippingCalculator = () => {
               </div>
             )}
             </CardContent>
-          </Card>
-
-          {/* Resultado das Variações */}
-          {variationCalculations.length > 0 && (
-            <div className="col-span-1 md:col-span-2 space-y-6">
-                <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    <Package className="w-6 h-6 text-[#fe2c55]" />
-                    Resultados das Variações
-                </h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                    {variationCalculations.map((v) => (
-                         <Card key={v.id} className="bg-gradient-to-br from-blue-600 to-indigo-600 border-none shadow-xl text-white">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-xl font-bold">{v.name}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                                    <p className="text-sm text-white/80 mb-1">Preço de Venda Sugerido</p>
-                                    <p className="text-3xl font-bold">R$ {v.metrics.suggestedPrice}</p>
-                                    <p className="text-xs text-white/70 mt-2">{v.metrics.taxDescription}</p>
-                                </div>
-                                <div className="mt-4 space-y-2 text-sm">
-                                    <div className="flex justify-between border-b border-white/20 py-1">
-                                        <span className="text-white/80">Custo Total</span>
-                                        <span>R$ {v.metrics.totalCost.toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between border-b border-white/20 py-1">
-                                        <span className="text-white/80">Taxas</span>
-                                        <span className="text-red-200">- R$ {v.metrics.totalFees}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 font-bold">
-                                        <span>Lucro Líquido</span>
-                                        <span className="text-green-300">R$ {v.metrics.netRevenue}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 font-bold">
-                                        <span>Margem</span>
-                                        <span className="text-green-300">{v.metrics.actualMargin}%</span>
-                                    </div>
-                                </div>
-                            </CardContent>
-                         </Card>
-                    ))}
-                </div>
             </div>
-          )}
+          </Card>
         </div>
 
         {/* Tabela de Referência */}
