@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('Verify Latest Features: Discount/Acréscimo, Packaging Cost, and Variations', async ({ page }) => {
-  await page.goto('http://localhost:5179');
+  await page.goto('http://localhost:5173');
 
   // 1. Test Packaging Cost and Total Cost Logic
   // Set Product Cost = 100
@@ -121,7 +121,7 @@ test('Verify Latest Features: Discount/Acréscimo, Packaging Cost, and Variation
 });
 
 test('Verify Shopee Extra Commission and Low Price Fee', async ({ page }) => {
-  await page.goto('http://localhost:5179');
+  await page.goto('http://localhost:5173');
   
   // 1. Test Extra Commission
   // Note: Default marketplace is Mercado Livre. We must switch to Shopee to see "Comissões Extras" input.

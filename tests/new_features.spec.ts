@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('Verify New Features: Markup, Extra Commission, and Low Price Fee', async ({ page }) => {
-  await page.goto('http://localhost:5179');
+  await page.goto('http://localhost:5173');
 
   // 1. Verify Markup Label rename
   await expect(page.getByText('Markup', { exact: true })).toBeVisible();

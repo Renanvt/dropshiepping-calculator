@@ -4,7 +4,7 @@ test.setTimeout(60000);
 
 test.describe('Animation and UI Improvements', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5176/');
+    await page.goto('http://localhost:5173/');
     await page.waitForLoadState('domcontentloaded');
   });
 

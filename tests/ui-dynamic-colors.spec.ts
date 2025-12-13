@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('UI Color Logic and Video Opacity', async ({ page }) => {
-  await page.goto('http://localhost:5176');
+  await page.goto('http://localhost:5173');
 
   // 1. Verify Video Opacity (should be 30% and mix-blend-overlay)
   const videoElement = page.locator('video');

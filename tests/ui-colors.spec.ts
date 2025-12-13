@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('UI Colors and Video', async ({ page }) => {
-  await page.goto('http://localhost:5176');
+  await page.goto('http://localhost:5173');
 
   // 1. Verify Video Background Source
   const video = page.locator('video source');

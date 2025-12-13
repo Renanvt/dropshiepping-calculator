@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('Dropshipping Calculator Functionality with Shadcn UI', async ({ page }) => {
   // 1. Start application
-  await page.goto('http://localhost:5179');
+  await page.goto('http://localhost:5173');
 
   // 2. Verify initial state of result panel (gray background)
   // We look for the Card that contains "Resultado da Precificação"

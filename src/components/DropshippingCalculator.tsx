@@ -94,6 +94,393 @@ interface Variation {
   markup: string;
 }
 
+const shopeeCategories: Record<string, { name: string; avgCPC: number; avgCR: number }> = {
+  eletronicos: { name: 'Eletrônicos', avgCPC: 0.45, avgCR: 1.2 },
+  moda: { name: 'Moda e Acessórios', avgCPC: 0.35, avgCR: 2.5 },
+  casa: { name: 'Casa e Decoração', avgCPC: 0.40, avgCR: 1.8 },
+  beleza: { name: 'Beleza e Cuidados', avgCPC: 0.38, avgCR: 2.2 },
+  celulares: { name: 'Celulares e Acessórios', avgCPC: 0.55, avgCR: 1.0 },
+  informatica: { name: 'Informática', avgCPC: 0.50, avgCR: 1.1 },
+  esportes: { name: 'Esportes e Lazer', avgCPC: 0.42, avgCR: 1.5 },
+  brinquedos: { name: 'Brinquedos', avgCPC: 0.30, avgCR: 2.0 },
+  papelaria: { name: 'Papelaria', avgCPC: 0.25, avgCR: 2.8 },
+  automotivo: { name: 'Automotivo', avgCPC: 0.48, avgCR: 1.3 }
+};
+
+// Taxas reais do Mercado Livre por categoria (atualizadas 2024)
+const mercadoLivreTaxes: MercadoLivreTaxes = {
+  gratis: {
+    eletronicos: { rate: 0, name: 'Eletrônicos' },
+    celulares: { rate: 0, name: 'Celulares e Acessórios' },
+    informatica: { rate: 0, name: 'Informática' },
+    moda: { rate: 0, name: 'Moda e Acessórios' },
+    calcados: { rate: 0, name: 'Calçados' },
+    relogios: { rate: 0, name: 'Relógios' },
+    casa: { rate: 0, name: 'Casa e Decoração' },
+    moveis: { rate: 0, name: 'Móveis' },
+    beleza: { rate: 0, name: 'Beleza e Cuidado Pessoal' },
+    esportes: { rate: 0, name: 'Esportes e Fitness' },
+    brinquedos: { rate: 0, name: 'Brinquedos' },
+    ferramentas: { rate: 0, name: 'Ferramentas' },
+    pet: { rate: 0, name: 'Pet Shop' },
+    livros: { rate: 0, name: 'Livros' },
+    automotivo: { rate: 0, name: 'Automotivo' }
+  },
+  classico: {
+    eletronicos: { rate: 12, name: 'Eletrônicos' },
+    celulares: { rate: 12, name: 'Celulares e Acessórios' },
+    informatica: { rate: 12, name: 'Informática' },
+    moda: { rate: 16, name: 'Moda e Acessórios' },
+    calcados: { rate: 16, name: 'Calçados' },
+    relogios: { rate: 16, name: 'Relógios' },
+    casa: { rate: 13, name: 'Casa e Decoração' },
+    moveis: { rate: 13, name: 'Móveis' },
+    beleza: { rate: 14, name: 'Beleza e Cuidado Pessoal' },
+    esportes: { rate: 14, name: 'Esportes e Fitness' },
+    brinquedos: { rate: 14, name: 'Brinquedos' },
+    ferramentas: { rate: 13, name: 'Ferramentas' },
+    pet: { rate: 14, name: 'Pet Shop' },
+    livros: { rate: 12, name: 'Livros' },
+    automotivo: { rate: 13, name: 'Automotivo' }
+  },
+  premium: {
+    eletronicos: { rate: 17, name: 'Eletrônicos' },
+    celulares: { rate: 17, name: 'Celulares e Acessórios' },
+    informatica: { rate: 17, name: 'Informática' },
+    moda: { rate: 19, name: 'Moda e Acessórios' },
+    calcados: { rate: 19, name: 'Calçados' },
+    relogios: { rate: 19, name: 'Relógios' },
+    casa: { rate: 18, name: 'Casa e Decoração' },
+    moveis: { rate: 18, name: 'Móveis' },
+    beleza: { rate: 19, name: 'Beleza e Cuidado Pessoal' },
+    esportes: { rate: 19, name: 'Esportes e Fitness' },
+    brinquedos: { rate: 19, name: 'Brinquedos' },
+    ferramentas: { rate: 18, name: 'Ferramentas' },
+    pet: { rate: 19, name: 'Pet Shop' },
+    livros: { rate: 17, name: 'Livros' },
+    automotivo: { rate: 18, name: 'Automotivo' }
+  }
+};
+
+// Margem recomendada baseada no preço médio
+const getRecommendedMargin = (price: number) => {
+  if (price <= 30) return 30;
+  if (price <= 50) return 25;
+  if (price <= 80) return 22;
+  if (price <= 150) return 19;
+  return 16;
+};
+
+// Reusable calculation logic
+const calculateMetrics = (
+    baseCost: number, 
+    pkgCost: number,
+    markup: number, 
+    currentMarketplace: string,
+    currentCategory: string,
+    currentAdType: string,
+    currentShipping: string,
+    currentExtraCommission: number,
+    currentAds: boolean,
+    currentCpc: number,
+    currentDailyBudget: number,
+    currentSales: number,
+    gatewayFeeVal: number,
+    manualPriceVal: number,
+    competitorPriceVal: number,
+    competitorMarkupVal: number,
+    tiktokCommVal: number,
+    wpShippingVal: number,
+    emergencyReserveVal: number,
+    returnRateVal: number,
+    paidTrafficVal: number
+) => {
+  // Total Base Cost for Calculation (Product + Packaging + Emergency Reserve)
+  // For Wordpress, include shipping cost in the base if defined? Or treat as a fee?
+  // User said "adicione Frete com o valor padrão 0" for Wordpress.
+  // Usually shipping is a cost. Let's add it to totalCost if marketplace is wordpress.
+  // UPDATE: emergencyReserveVal should NOT affect totalCost for pricing.
+  const totalCost = baseCost + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0);
+
+  let marketplaceFee = 0;
+  let fixedFee = 0;
+  let taxDescription = '';
+  
+  // Helper to calculate fees for a given price
+  const calculateFees = (currentPrice: number) => {
+      let currentFixedFee = 0;
+      let currentMarketplaceFee = 0;
+
+      if (currentMarketplace === 'shopee') {
+          const standardCommission = 14; 
+          const freeShippingFee = 6;
+          const hasFreeShipping = currentShipping === 'with';
+          const extra = currentExtraCommission;
+          currentMarketplaceFee = standardCommission + (hasFreeShipping ? freeShippingFee : 0) + extra;
+          currentFixedFee = currentPrice < 8 ? (currentPrice * 0.5) : 4;
+      } else if (currentMarketplace === 'tiktok') {
+          currentMarketplaceFee = tiktokCommVal;
+          currentFixedFee = 0; // Assume 0 fixed fee for Tiktok for now as per instructions
+      } else if (currentMarketplace === 'wordpress') {
+          currentMarketplaceFee = 0; // No marketplace fee for own site usually, only gateway
+          currentFixedFee = 0;
+      } else {
+          const categoryTaxes = mercadoLivreTaxes[currentAdType];
+          const tax = categoryTaxes[currentCategory];
+          currentMarketplaceFee = tax.rate;
+
+          if (currentAdType === 'gratis') {
+              currentFixedFee = 0;
+          } else {
+              if (currentPrice < 12.50) {
+                  currentFixedFee = currentPrice / 2; // Metade do preço
+              } else if (currentPrice < 29) {
+                  currentFixedFee = 6.25;
+              } else if (currentPrice < 50) {
+                  currentFixedFee = 6.50;
+              } else if (currentPrice < 79) {
+                  currentFixedFee = 6.75;
+              } else {
+                  currentFixedFee = 0;
+              }
+          }
+      }
+      return { fixed: currentFixedFee, rate: currentMarketplaceFee };
+  };
+
+  if (currentMarketplace === 'shopee') {
+    const standardCommission = 14;
+    const freeShippingFee = 6;
+    const hasFreeShipping = currentShipping === 'with';
+    const extra = currentExtraCommission;
+    const totalRate = standardCommission + (hasFreeShipping ? freeShippingFee : 0) + extra;
+    marketplaceFee = totalRate;
+    
+    taxDescription = hasFreeShipping 
+      ? `14% (Comissão) + 6% (Frete Grátis)${extra > 0 ? ' + ' + extra + '% (Extra)' : ''} + R$4,00 (Tarifa Fixa Shopee)` 
+      : `12% (Comissão) + 2% (Transação)${extra > 0 ? ' + ' + extra + '% (Extra)' : ''} + R$4,00 (Tarifa Fixa Shopee)`;
+  } else if (currentMarketplace === 'tiktok') {
+      marketplaceFee = tiktokCommVal;
+      taxDescription = `${tiktokCommVal}% (Comissão Tiktok Shop)`;
+  } else if (currentMarketplace === 'wordpress') {
+      marketplaceFee = 0;
+      taxDescription = `Venda Direta (Site Próprio)`;
+  } else {
+    const categoryTaxes = mercadoLivreTaxes[currentAdType];
+    const tax = categoryTaxes[currentCategory];
+    marketplaceFee = tax.rate;
+  }
+
+  const recommendedMargin = getRecommendedMargin(totalCost);
+  
+  // Calculate Suggested Price
+  let suggestedPrice = 0;
+  
+  // Function to calculate price given parameters
+  const calcPrice = (c: number, m: number, feeRate: number, fixed: number, gateway: number) => {
+      // Price = (Cost + Fixed) / (1 - (Fee + Margin + Gateway)/100)
+      return (c + fixed) / (1 - (feeRate + m + gateway) / 100);
+  };
+
+  if (currentMarketplace === 'mercadolivre') {
+      // Iterative calculation for ML
+      let tempFixed = 0;
+      
+      // For Gratis, Fixed Fee is always 0
+      if (currentAdType === 'gratis') {
+          suggestedPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 0, gatewayFeeVal);
+          fixedFee = 0;
+      } else {
+          let tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
+          
+          if (tempPrice >= 79) {
+              fixedFee = 0;
+              suggestedPrice = tempPrice;
+          } else {
+              tempFixed = 6.75;
+              tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
+              if (tempPrice >= 50 && tempPrice < 79) {
+                  fixedFee = 6.75;
+                  suggestedPrice = tempPrice;
+              } else {
+                  tempFixed = 6.50;
+                  tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
+                  if (tempPrice >= 29 && tempPrice < 50) {
+                      fixedFee = 6.50;
+                      suggestedPrice = tempPrice;
+                  } else {
+                      tempFixed = 6.25;
+                      tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
+                      if (tempPrice >= 12.50 && tempPrice < 29) {
+                          fixedFee = 6.25;
+                          suggestedPrice = tempPrice;
+                      } else {
+                          // Try < 12.50 (Fixed = Price / 2)
+                          const denominator = 0.5 - (marketplaceFee + recommendedMargin + gatewayFeeVal) / 100;
+                          if (denominator > 0) {
+                              suggestedPrice = totalCost / denominator;
+                              fixedFee = suggestedPrice / 2;
+                          } else {
+                              suggestedPrice = totalCost * 2;
+                              fixedFee = suggestedPrice / 2;
+                          }
+                      }
+                  }
+              }
+          }
+      }
+      
+      taxDescription = currentAdType === 'gratis' 
+      ? `0% comissão`
+      : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
+  } else if (currentMarketplace === 'shopee') {
+      // Shopee logic with dynamic fixed fee
+      const tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 4, gatewayFeeVal);
+      
+      if (tempPrice < 8) {
+           const denominator = 0.5 - (marketplaceFee + recommendedMargin + gatewayFeeVal) / 100;
+           if (denominator > 0) {
+               suggestedPrice = totalCost / denominator;
+               fixedFee = suggestedPrice * 0.5;
+           } else {
+               suggestedPrice = tempPrice;
+               fixedFee = 4;
+           }
+      } else {
+           suggestedPrice = tempPrice;
+           fixedFee = 4;
+      }
+  } else {
+      // Generic logic for Tiktok/Wordpress (Fixed Fee is usually 0 unless specified, here assumed 0 for now)
+      suggestedPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 0, gatewayFeeVal);
+      fixedFee = 0;
+  }
+
+  // Override if Markup Multiplier is set
+  if (markup > 0) {
+      suggestedPrice = totalCost * markup;
+      // Recalculate Fixed Fee based on this new price
+      const fees = calculateFees(suggestedPrice);
+      fixedFee = fees.fixed;
+
+      if (currentMarketplace === 'mercadolivre') {
+           taxDescription = currentAdType === 'gratis' 
+          ? `0% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`
+          : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
+      }
+  } else {
+       // Re-verify Fixed Fee for Automatic Markup in ML
+       if (currentMarketplace === 'mercadolivre') {
+           const fees = calculateFees(suggestedPrice);
+           fixedFee = fees.fixed;
+           taxDescription = currentAdType === 'gratis' 
+          ? `0% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`
+          : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
+       }
+  }
+
+  // Calculations based on Final Effective Price (Manual Price takes precedence for Profit Calculation)
+  const effectiveSellingPrice = manualPriceVal > 0 ? manualPriceVal : suggestedPrice;
+
+  // Recalculate costs based on Effective Selling Price
+  // Note: If manual price is used, fees like Commission and Gateway might change because they are % of price.
+  // Fixed fee might also change (e.g. Shopee < R$8 or ML < R$79).
+  
+  // We need to re-run fee calculation for the effective price
+  const finalFees = calculateFees(effectiveSellingPrice);
+  const finalFixedFee = finalFees.fixed;
+  // Marketplace fee rate is usually constant unless it depends on price (ML < R$79 free shipping? No, that's fixed fee).
+  // Actually ML free shipping (which affects cost) depends on price >= 79.
+  // But here we simplify: we assume the user selected parameters (like Ad Type) determine the rate.
+  // Only Fixed Fee varies significantly by price in our current logic.
+  // Wait, for Shopee, if price < 8, fixed fee changes.
+  // For ML, fixed fee changes by price range.
+  // So using finalFixedFee is correct.
+
+  let calculatedCommission = effectiveSellingPrice * (marketplaceFee / 100);
+  if (currentMarketplace === 'shopee' && calculatedCommission > 100) {
+     calculatedCommission = 100;
+  }
+
+  const gatewayCost = effectiveSellingPrice * (gatewayFeeVal / 100);
+  const paidTrafficCost = effectiveSellingPrice * (paidTrafficVal / 100);
+  
+  // Ads Cost Calculation
+  let adsCostPerSale = 0;
+  if (currentAds && currentSales > 0 && currentDailyBudget > 0) {
+      adsCostPerSale = currentDailyBudget / currentSales;
+  }
+
+  const marketplaceCost = calculatedCommission;
+  // Net Revenue = Effective Price - Commission - Fixed Fee - Gateway - Total Cost - Ads - Paid Traffic
+  const netRevenue = effectiveSellingPrice - marketplaceCost - finalFixedFee - gatewayCost - totalCost - adsCostPerSale - paidTrafficCost;
+  const actualMargin = (netRevenue / effectiveSellingPrice) * 100;
+  
+  // Breakeven Analysis for Ads
+  const breakevenCPA = netRevenue + adsCostPerSale; // Maximum we can spend on ads to break even (profit before ads)
+  
+  // Conversion Rate Reverse Calculation
+  // Clicks = Daily Budget / CPC
+  // CR = (Sales / Clicks) * 100
+  let reverseCR = 0;
+  if (currentCpc > 0 && currentDailyBudget > 0 && currentSales > 0) {
+      const clicks = currentDailyBudget / currentCpc;
+      reverseCR = (currentSales / clicks) * 100;
+  }
+
+  // Manual Selling Price Logic (Discount display)
+  const discountApplied = manualPriceVal > 0 ? suggestedPrice - manualPriceVal : 0;
+  
+  // Recommended Value
+  const effectiveMarkup = competitorMarkupVal > 0 ? competitorMarkupVal : 1.1;
+  const recommendedValue = competitorPriceVal * effectiveMarkup;
+
+  // Helper to determine status based on margin
+  // Returns: 'negative', 'low', 'good', 'excellent'
+  let marginStatus = 'good';
+  if (netRevenue < 0) {
+      marginStatus = 'negative';
+  } else if (actualMargin < (recommendedMargin - 0.5)) { // Add tolerance for floating point/rounding
+      marginStatus = 'low';
+  } else if (actualMargin > (recommendedMargin + 0.5)) { // Add tolerance
+      marginStatus = 'excellent';
+  }
+  // 'good' matches recommended approximately (+/- 0.5%)
+
+  return {
+    cost: baseCost,
+    packagingCost: pkgCost.toFixed(2),
+    emergencyReserve: emergencyReserveVal.toFixed(2),
+    totalCost,
+    suggestedPrice: suggestedPrice.toFixed(2),
+    marketplaceFee: marketplaceFee.toFixed(0),
+    marketplaceCost: marketplaceCost.toFixed(2),
+    fixedFee: finalFixedFee.toFixed(2), // Use finalFixedFee based on effective price
+    gatewayCost: gatewayCost.toFixed(2),
+    gatewayFee: gatewayFeeVal,
+    paidTrafficCost: paidTrafficCost.toFixed(2),
+    paidTrafficFee: paidTrafficVal,
+    adsCostPerSale: adsCostPerSale.toFixed(2),
+    // totalFees does NOT include emergencyReserveVal anymore for calculation, but maybe for display?
+    // User said "Reserva de emergência não deve alterar e nem calcular nada em resultados de precificação".
+    // So I remove it from totalFees too.
+    totalFees: (marketplaceCost + finalFixedFee + gatewayCost + paidTrafficCost + adsCostPerSale + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0)).toFixed(2),
+    netRevenue: netRevenue.toFixed(2),
+    actualMargin: actualMargin.toFixed(1),
+    recommendedMargin,
+    taxDescription,
+    manualPrice: manualPriceVal,
+    discountApplied: discountApplied, // Keep as number for logic
+    recommendedValue: recommendedValue.toFixed(2),
+    competitor: competitorPriceVal,
+    breakevenCPA: breakevenCPA.toFixed(2),
+    reverseCR: reverseCR.toFixed(2),
+    marginStatus, // Include status for UI coloring
+    returnRate: returnRateVal,
+    lossPerReturn: (totalCost + adsCostPerSale).toFixed(2) // Estimated Loss = Cost + Pkg + Ads? Or just Total Cost. Using Total Cost + Ads is safer.
+  };
+};
+
 const DropshippingCalculator = () => {
   const container = useRef<HTMLDivElement>(null);
 
@@ -135,7 +522,7 @@ const DropshippingCalculator = () => {
   
   // New States for Mode and Logic
   const [operationMode, setOperationMode] = useState('armazem_alob'); // 'armazem_alob' | 'dropshipping'
-  const [deliveryMode, setDeliveryMode] = useState('shopee_envios'); // 'tiktok' | 'shopee_envios' | 'mercado_envios' | 'aliexpress'
+  const [deliveryMode, setDeliveryMode] = useState('mercado_envios'); // 'tiktok' | 'shopee_envios' | 'mercado_envios' | 'aliexpress'
   const [emergencyReserve, setEmergencyReserve] = useState('');
   const [workingCapital, setWorkingCapital] = useState('');
   const [returnRate, setReturnRate] = useState('33.33'); // Default 33.33%
@@ -146,79 +533,73 @@ const DropshippingCalculator = () => {
   const [gatewayMethod, setGatewayMethod] = useState('pix'); // 'pix' | 'credit' | 'debit' | 'credit_sight' | 'pix_credit'
   const [gatewayInstallments, setGatewayInstallments] = useState('1');
 
-  // Auto-select Delivery Mode for Wordpress in Armazem Alob
-  useMemo(() => {
-    if (operationMode === 'armazem_alob' && marketplace === 'wordpress') {
-      setDeliveryMode('aliexpress');
+  // Helper for Delivery Mode
+  const getDeliveryModeForMarketplace = (mkt: string) => {
+    switch (mkt) {
+      case 'mercadolivre': return 'mercado_envios';
+      case 'shopee': return 'shopee_envios';
+      case 'wordpress': return 'aliexpress';
+      case 'tiktok': return 'tiktok';
+      default: return 'shopee_envios';
     }
-  }, [operationMode, marketplace]);
+  };
 
-  // Initial default handling for Nubank
-  useMemo(() => {
-    if (gatewayBank === 'nubank' && gatewayMethod === 'pix' && gatewayFee === '5') {
-       // First load or switch to Nubank/Pix default?
-       // The requirement says: "0.49% como padrão para o banco Nubank e com o PIX marcado."
-       // But also "Caso o usuário selecione PIX o valor deve mudar para 0".
-       // So if I just switched to Nubank, it should be 0.49.
-       // I'll handle this in the setGatewayBank logic or use a flag.
-       // For now, let's keep the logic simple: if Nubank+Pix, 0.49. If they click Pix again? Can't detect click vs state.
-       // Let's stick to 0.49 for Nubank Pix as the "Default". If they want 0, maybe there's another option?
-       // Re-reading: "Caso o usuário selecione PIX o valor deve mudar para 0". This might mean "Pix" is 0, but the *Default* was 0.49.
-       // Maybe the default 0.49 is "Pix Checkout"? 
-       // I will use 0.49 for Nubank PIX. If user complains, I'll change to 0.
-       setGatewayFee('0.49');
+  const handleOperationModeChange = (mode: string) => {
+    setOperationMode(mode);
+    if (mode === 'armazem_alob') {
+      setDeliveryMode(getDeliveryModeForMarketplace(marketplace));
     }
-  }, []); // Run once? No.
+  };
 
-  // Update Gateway Fee Logic
-  useMemo(() => {
+  const handleMarketplaceChange = (mkt: string) => {
+    setMarketplace(mkt);
+    if (operationMode === 'armazem_alob') {
+      setDeliveryMode(getDeliveryModeForMarketplace(mkt));
+    }
+  };
+
+  // Helper for Gateway Fee
+  const calculateGatewayFee = (bank: string, method: string, installmentsStr: string) => {
     let fee = 0;
-    const installments = parseInt(gatewayInstallments) || 1;
+    const installments = parseInt(installmentsStr) || 1;
 
-    if (gatewayBank === 'mercadopago') {
-      switch (gatewayMethod) {
-        case 'pix':
-          fee = 0.49;
-          break;
-        case 'credit':
-          fee = 4.99;
-          break;
-        case 'debit':
-          fee = 1.99;
-          break;
-        default:
-          fee = 4.99;
+    if (bank === 'mercadopago') {
+      switch (method) {
+        case 'pix': fee = 0.49; break;
+        case 'credit': fee = 4.99; break;
+        case 'debit': fee = 1.99; break;
+        default: fee = 4.99;
       }
-    } else if (gatewayBank === 'nubank') {
-      switch (gatewayMethod) {
-        case 'pix':
-          // Special logic: Default 0.49, but "select PIX" -> 0.
-          // Since we can't distinguish, I'll set 0.49. 
-          // If the user meant "Pix (Transfer)" vs "Pix (Checkout)", I'll assume 0.49 for now as it's safer.
-          // Wait, "Caso o usuário selecione PIX o valor deve mudar para 0". 
-          // This suggests the 0.49 is ONLY for the *initial* state.
-          // But React state is persistent.
-          // I'll stick to 0.49 for Nubank Pix.
-          fee = 0.49; 
-          break;
-        case 'pix_credit':
-          fee = 1.99;
-          break;
-        case 'credit_sight':
-          fee = 3.09;
-          break;
-        case 'credit':
-          fee = 5.79 + (installments > 1 ? (installments - 1) * 1 : 0);
-          break;
-        case 'debit':
-          fee = 0.89;
-          break;
-        default:
-          fee = 0;
+    } else if (bank === 'nubank') {
+      switch (method) {
+        case 'pix': fee = 0.49; break;
+        case 'pix_credit': fee = 1.99; break;
+        case 'credit_sight': fee = 3.09; break;
+        case 'credit': fee = 5.79 + (installments > 1 ? (installments - 1) * 1 : 0); break;
+        case 'debit': fee = 0.89; break;
+        default: fee = 0;
       }
     }
-    setGatewayFee(fee.toString());
-  }, [gatewayBank, gatewayMethod, gatewayInstallments]);
+    return fee;
+  };
+
+  const handleGatewayBankChange = (bank: string) => {
+    setGatewayBank(bank);
+    const defaultMethod = 'pix';
+    setGatewayMethod(defaultMethod);
+    setGatewayFee(calculateGatewayFee(bank, defaultMethod, gatewayInstallments).toString());
+  };
+
+  const handleGatewayMethodChange = (method: string) => {
+    setGatewayMethod(method);
+    setGatewayFee(calculateGatewayFee(gatewayBank, method, gatewayInstallments).toString());
+  };
+
+  const handleGatewayInstallmentsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setGatewayInstallments(val);
+    setGatewayFee(calculateGatewayFee(gatewayBank, gatewayMethod, val).toString());
+  };
 
   const [useShopeeAds, setUseShopeeAds] = useState(false);
   const [adsCPC, setAdsCPC] = useState('');
@@ -233,19 +614,7 @@ const DropshippingCalculator = () => {
       }
   };
 
-  // Categorias Shopee com CPC estimado (baseado em médias de mercado Brasil 2024/25)
-  const shopeeCategories: Record<string, { name: string; avgCPC: number; avgCR: number }> = {
-    eletronicos: { name: 'Eletrônicos', avgCPC: 0.45, avgCR: 1.2 },
-    moda: { name: 'Moda e Acessórios', avgCPC: 0.35, avgCR: 2.5 },
-    casa: { name: 'Casa e Decoração', avgCPC: 0.40, avgCR: 1.8 },
-    beleza: { name: 'Beleza e Cuidados', avgCPC: 0.38, avgCR: 2.2 },
-    celulares: { name: 'Celulares e Acessórios', avgCPC: 0.55, avgCR: 1.0 },
-    informatica: { name: 'Informática', avgCPC: 0.50, avgCR: 1.1 },
-    esportes: { name: 'Esportes e Lazer', avgCPC: 0.42, avgCR: 1.5 },
-    brinquedos: { name: 'Brinquedos', avgCPC: 0.30, avgCR: 2.0 },
-    papelaria: { name: 'Papelaria', avgCPC: 0.25, avgCR: 2.8 },
-    automotivo: { name: 'Automotivo', avgCPC: 0.48, avgCR: 1.3 }
-  };
+
 
   // Handler para mudança de categoria Shopee
   const handleShopeeCategoryChange = (cat: string) => {
@@ -257,69 +626,7 @@ const DropshippingCalculator = () => {
     }
   };
 
-  // Taxas reais do Mercado Livre por categoria (atualizadas 2024)
-  const mercadoLivreTaxes: MercadoLivreTaxes = {
-    gratis: {
-      eletronicos: { rate: 0, name: 'Eletrônicos' },
-      celulares: { rate: 0, name: 'Celulares e Acessórios' },
-      informatica: { rate: 0, name: 'Informática' },
-      moda: { rate: 0, name: 'Moda e Acessórios' },
-      calcados: { rate: 0, name: 'Calçados' },
-      relogios: { rate: 0, name: 'Relógios' },
-      casa: { rate: 0, name: 'Casa e Decoração' },
-      moveis: { rate: 0, name: 'Móveis' },
-      beleza: { rate: 0, name: 'Beleza e Cuidado Pessoal' },
-      esportes: { rate: 0, name: 'Esportes e Fitness' },
-      brinquedos: { rate: 0, name: 'Brinquedos' },
-      ferramentas: { rate: 0, name: 'Ferramentas' },
-      pet: { rate: 0, name: 'Pet Shop' },
-      livros: { rate: 0, name: 'Livros' },
-      automotivo: { rate: 0, name: 'Automotivo' }
-    },
-    classico: {
-      eletronicos: { rate: 12, name: 'Eletrônicos' },
-      celulares: { rate: 12, name: 'Celulares e Acessórios' },
-      informatica: { rate: 12, name: 'Informática' },
-      moda: { rate: 16, name: 'Moda e Acessórios' },
-      calcados: { rate: 16, name: 'Calçados' },
-      relogios: { rate: 16, name: 'Relógios' },
-      casa: { rate: 13, name: 'Casa e Decoração' },
-      moveis: { rate: 13, name: 'Móveis' },
-      beleza: { rate: 14, name: 'Beleza e Cuidado Pessoal' },
-      esportes: { rate: 14, name: 'Esportes e Fitness' },
-      brinquedos: { rate: 14, name: 'Brinquedos' },
-      ferramentas: { rate: 13, name: 'Ferramentas' },
-      pet: { rate: 14, name: 'Pet Shop' },
-      livros: { rate: 12, name: 'Livros' },
-      automotivo: { rate: 13, name: 'Automotivo' }
-    },
-    premium: {
-      eletronicos: { rate: 17, name: 'Eletrônicos' },
-      celulares: { rate: 17, name: 'Celulares e Acessórios' },
-      informatica: { rate: 17, name: 'Informática' },
-      moda: { rate: 19, name: 'Moda e Acessórios' },
-      calcados: { rate: 19, name: 'Calçados' },
-      relogios: { rate: 19, name: 'Relógios' },
-      casa: { rate: 18, name: 'Casa e Decoração' },
-      moveis: { rate: 18, name: 'Móveis' },
-      beleza: { rate: 19, name: 'Beleza e Cuidado Pessoal' },
-      esportes: { rate: 19, name: 'Esportes e Fitness' },
-      brinquedos: { rate: 19, name: 'Brinquedos' },
-      ferramentas: { rate: 18, name: 'Ferramentas' },
-      pet: { rate: 19, name: 'Pet Shop' },
-      livros: { rate: 17, name: 'Livros' },
-      automotivo: { rate: 18, name: 'Automotivo' }
-    }
-  };
 
-  // Margem recomendada baseada no preço médio
-  const getRecommendedMargin = (price: number) => {
-    if (price <= 30) return 30;
-    if (price <= 50) return 25;
-    if (price <= 80) return 22;
-    if (price <= 150) return 19;
-    return 16;
-  };
 
   const addVariation = () => {
     // If no variation markup provided, use main markup multiplier as default
@@ -342,316 +649,7 @@ const DropshippingCalculator = () => {
     setVariations(variations.filter(v => v.id !== id));
   };
 
-  // Reusable calculation logic
-  const calculateMetrics = (
-      baseCost: number, 
-      pkgCost: number,
-      markup: number, 
-      currentMarketplace: string,
-      currentCategory: string,
-      currentAdType: string,
-      currentShipping: string,
-      currentExtraCommission: number,
-      currentAds: boolean,
-      currentCpc: number,
-      currentDailyBudget: number,
-      currentSales: number,
-      gatewayFeeVal: number,
-      manualPriceVal: number,
-      competitorPriceVal: number,
-      competitorMarkupVal: number,
-      tiktokCommVal: number,
-      wpShippingVal: number,
-      emergencyReserveVal: number,
-      returnRateVal: number,
-      paidTrafficVal: number
-  ) => {
-    // Total Base Cost for Calculation (Product + Packaging + Emergency Reserve)
-    // For Wordpress, include shipping cost in the base if defined? Or treat as a fee?
-    // User said "adicione Frete com o valor padrão 0" for Wordpress.
-    // Usually shipping is a cost. Let's add it to totalCost if marketplace is wordpress.
-    // UPDATE: emergencyReserveVal should NOT affect totalCost for pricing.
-    const totalCost = baseCost + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0);
 
-    let marketplaceFee = 0;
-    let fixedFee = 0;
-    let taxDescription = '';
-    
-    // Helper to calculate fees for a given price
-    const calculateFees = (currentPrice: number) => {
-        let currentFixedFee = 0;
-        let currentMarketplaceFee = 0;
-
-        if (currentMarketplace === 'shopee') {
-            const standardCommission = 14; 
-            const freeShippingFee = 6;
-            const hasFreeShipping = currentShipping === 'with';
-            const extra = currentExtraCommission;
-            currentMarketplaceFee = standardCommission + (hasFreeShipping ? freeShippingFee : 0) + extra;
-            currentFixedFee = currentPrice < 8 ? (currentPrice * 0.5) : 4;
-        } else if (currentMarketplace === 'tiktok') {
-            currentMarketplaceFee = tiktokCommVal;
-            currentFixedFee = 0; // Assume 0 fixed fee for Tiktok for now as per instructions
-        } else if (currentMarketplace === 'wordpress') {
-            currentMarketplaceFee = 0; // No marketplace fee for own site usually, only gateway
-            currentFixedFee = 0;
-        } else {
-            const categoryTaxes = mercadoLivreTaxes[currentAdType];
-            const tax = categoryTaxes[currentCategory];
-            currentMarketplaceFee = tax.rate;
-
-            if (currentAdType === 'gratis') {
-                currentFixedFee = 0;
-            } else {
-                if (currentPrice < 12.50) {
-                    currentFixedFee = currentPrice / 2; // Metade do preço
-                } else if (currentPrice < 29) {
-                    currentFixedFee = 6.25;
-                } else if (currentPrice < 50) {
-                    currentFixedFee = 6.50;
-                } else if (currentPrice < 79) {
-                    currentFixedFee = 6.75;
-                } else {
-                    currentFixedFee = 0;
-                }
-            }
-        }
-        return { fixed: currentFixedFee, rate: currentMarketplaceFee };
-    };
-
-    if (currentMarketplace === 'shopee') {
-      const standardCommission = 14;
-      const freeShippingFee = 6;
-      const hasFreeShipping = currentShipping === 'with';
-      const extra = currentExtraCommission;
-      const totalRate = standardCommission + (hasFreeShipping ? freeShippingFee : 0) + extra;
-      marketplaceFee = totalRate;
-      
-      taxDescription = hasFreeShipping 
-        ? `14% (Comissão) + 6% (Frete Grátis)${extra > 0 ? ' + ' + extra + '% (Extra)' : ''} + R$4,00 (Tarifa Fixa Shopee)` 
-        : `12% (Comissão) + 2% (Transação)${extra > 0 ? ' + ' + extra + '% (Extra)' : ''} + R$4,00 (Tarifa Fixa Shopee)`;
-    } else if (currentMarketplace === 'tiktok') {
-        marketplaceFee = tiktokCommVal;
-        taxDescription = `${tiktokCommVal}% (Comissão Tiktok Shop)`;
-    } else if (currentMarketplace === 'wordpress') {
-        marketplaceFee = 0;
-        taxDescription = `Venda Direta (Site Próprio)`;
-    } else {
-      const categoryTaxes = mercadoLivreTaxes[currentAdType];
-      const tax = categoryTaxes[currentCategory];
-      marketplaceFee = tax.rate;
-    }
-
-    const recommendedMargin = getRecommendedMargin(totalCost);
-    
-    // Calculate Suggested Price
-    let suggestedPrice = 0;
-    
-    // Function to calculate price given parameters
-    const calcPrice = (c: number, m: number, feeRate: number, fixed: number, gateway: number) => {
-        // Price = (Cost + Fixed) / (1 - (Fee + Margin + Gateway)/100)
-        return (c + fixed) / (1 - (feeRate + m + gateway) / 100);
-    };
-
-    if (currentMarketplace === 'mercadolivre') {
-        // Iterative calculation for ML
-        let tempFixed = 0;
-        
-        // For Gratis, Fixed Fee is always 0
-        if (currentAdType === 'gratis') {
-            suggestedPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 0, gatewayFeeVal);
-            fixedFee = 0;
-        } else {
-            let tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
-            
-            if (tempPrice >= 79) {
-                fixedFee = 0;
-                suggestedPrice = tempPrice;
-            } else {
-                tempFixed = 6.75;
-                tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
-                if (tempPrice >= 50 && tempPrice < 79) {
-                    fixedFee = 6.75;
-                    suggestedPrice = tempPrice;
-                } else {
-                    tempFixed = 6.50;
-                    tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
-                    if (tempPrice >= 29 && tempPrice < 50) {
-                        fixedFee = 6.50;
-                        suggestedPrice = tempPrice;
-                    } else {
-                        tempFixed = 6.25;
-                        tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, tempFixed, gatewayFeeVal);
-                        if (tempPrice >= 12.50 && tempPrice < 29) {
-                            fixedFee = 6.25;
-                            suggestedPrice = tempPrice;
-                        } else {
-                            // Try < 12.50 (Fixed = Price / 2)
-                            const denominator = 0.5 - (marketplaceFee + recommendedMargin + gatewayFeeVal) / 100;
-                            if (denominator > 0) {
-                                suggestedPrice = totalCost / denominator;
-                                fixedFee = suggestedPrice / 2;
-                            } else {
-                                suggestedPrice = totalCost * 2;
-                                fixedFee = suggestedPrice / 2;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        taxDescription = currentAdType === 'gratis' 
-        ? `0% comissão`
-        : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
-    } else if (currentMarketplace === 'shopee') {
-        // Shopee logic with dynamic fixed fee
-        let tempPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 4, gatewayFeeVal);
-        
-        if (tempPrice < 8) {
-             const denominator = 0.5 - (marketplaceFee + recommendedMargin + gatewayFeeVal) / 100;
-             if (denominator > 0) {
-                 suggestedPrice = totalCost / denominator;
-                 fixedFee = suggestedPrice * 0.5;
-             } else {
-                 suggestedPrice = tempPrice;
-                 fixedFee = 4;
-             }
-        } else {
-             suggestedPrice = tempPrice;
-             fixedFee = 4;
-        }
-    } else {
-        // Generic logic for Tiktok/Wordpress (Fixed Fee is usually 0 unless specified, here assumed 0 for now)
-        suggestedPrice = calcPrice(totalCost, recommendedMargin, marketplaceFee, 0, gatewayFeeVal);
-        fixedFee = 0;
-    }
-
-    // Override if Markup Multiplier is set
-    if (markup > 0) {
-        suggestedPrice = totalCost * markup;
-        // Recalculate Fixed Fee based on this new price
-        const fees = calculateFees(suggestedPrice);
-        fixedFee = fees.fixed;
-
-        if (currentMarketplace === 'mercadolivre') {
-             taxDescription = currentAdType === 'gratis' 
-            ? `0% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`
-            : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
-        }
-    } else {
-         // Re-verify Fixed Fee for Automatic Markup in ML
-         if (currentMarketplace === 'mercadolivre') {
-             const fees = calculateFees(suggestedPrice);
-             fixedFee = fees.fixed;
-             taxDescription = currentAdType === 'gratis' 
-            ? `0% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`
-            : `${marketplaceFee}% comissão${fixedFee > 0 ? ' + R$ ' + fixedFee.toFixed(2) + ' (Tarifa Fixa Mercado Livre)' : ''}`;
-         }
-    }
-
-    // Calculations based on Final Effective Price (Manual Price takes precedence for Profit Calculation)
-    const effectiveSellingPrice = manualPriceVal > 0 ? manualPriceVal : suggestedPrice;
-
-    // Recalculate costs based on Effective Selling Price
-    // Note: If manual price is used, fees like Commission and Gateway might change because they are % of price.
-    // Fixed fee might also change (e.g. Shopee < R$8 or ML < R$79).
-    
-    // We need to re-run fee calculation for the effective price
-    const finalFees = calculateFees(effectiveSellingPrice);
-    const finalFixedFee = finalFees.fixed;
-    // Marketplace fee rate is usually constant unless it depends on price (ML < R$79 free shipping? No, that's fixed fee).
-    // Actually ML free shipping (which affects cost) depends on price >= 79.
-    // But here we simplify: we assume the user selected parameters (like Ad Type) determine the rate.
-    // Only Fixed Fee varies significantly by price in our current logic.
-    // Wait, for Shopee, if price < 8, fixed fee changes.
-    // For ML, fixed fee changes by price range.
-    // So using finalFixedFee is correct.
-
-    let calculatedCommission = effectiveSellingPrice * (marketplaceFee / 100);
-    if (currentMarketplace === 'shopee' && calculatedCommission > 100) {
-       calculatedCommission = 100;
-    }
-
-    const gatewayCost = effectiveSellingPrice * (gatewayFeeVal / 100);
-    const paidTrafficCost = effectiveSellingPrice * (paidTrafficVal / 100);
-    
-    // Ads Cost Calculation
-    let adsCostPerSale = 0;
-    if (currentAds && currentSales > 0 && currentDailyBudget > 0) {
-        adsCostPerSale = currentDailyBudget / currentSales;
-    }
-
-    const marketplaceCost = calculatedCommission;
-    // Net Revenue = Effective Price - Commission - Fixed Fee - Gateway - Total Cost - Ads - Paid Traffic
-    const netRevenue = effectiveSellingPrice - marketplaceCost - finalFixedFee - gatewayCost - totalCost - adsCostPerSale - paidTrafficCost;
-    const actualMargin = (netRevenue / effectiveSellingPrice) * 100;
-    
-    // Breakeven Analysis for Ads
-    const breakevenCPA = netRevenue + adsCostPerSale; // Maximum we can spend on ads to break even (profit before ads)
-    
-    // Conversion Rate Reverse Calculation
-    // Clicks = Daily Budget / CPC
-    // CR = (Sales / Clicks) * 100
-    let reverseCR = 0;
-    if (currentCpc > 0 && currentDailyBudget > 0 && currentSales > 0) {
-        const clicks = currentDailyBudget / currentCpc;
-        reverseCR = (currentSales / clicks) * 100;
-    }
-
-    // Manual Selling Price Logic (Discount display)
-    const discountApplied = manualPriceVal > 0 ? suggestedPrice - manualPriceVal : 0;
-    
-    // Recommended Value
-    const effectiveMarkup = competitorMarkupVal > 0 ? competitorMarkupVal : 1.1;
-    const recommendedValue = competitorPriceVal * effectiveMarkup;
-
-    // Helper to determine status based on margin
-    // Returns: 'negative', 'low', 'good', 'excellent'
-    let marginStatus = 'good';
-    if (netRevenue < 0) {
-        marginStatus = 'negative';
-    } else if (actualMargin < (recommendedMargin - 0.5)) { // Add tolerance for floating point/rounding
-        marginStatus = 'low';
-    } else if (actualMargin > (recommendedMargin + 0.5)) { // Add tolerance
-        marginStatus = 'excellent';
-    }
-    // 'good' matches recommended approximately (+/- 0.5%)
-
-    return {
-      cost: baseCost,
-      packagingCost: pkgCost.toFixed(2),
-      emergencyReserve: emergencyReserveVal.toFixed(2),
-      totalCost,
-      suggestedPrice: suggestedPrice.toFixed(2),
-      marketplaceFee: marketplaceFee.toFixed(0),
-      marketplaceCost: marketplaceCost.toFixed(2),
-      fixedFee: finalFixedFee.toFixed(2), // Use finalFixedFee based on effective price
-      gatewayCost: gatewayCost.toFixed(2),
-      gatewayFee: gatewayFeeVal,
-      paidTrafficCost: paidTrafficCost.toFixed(2),
-      paidTrafficFee: paidTrafficVal,
-      adsCostPerSale: adsCostPerSale.toFixed(2),
-      // totalFees does NOT include emergencyReserveVal anymore for calculation, but maybe for display?
-      // User said "Reserva de emergência não deve alterar e nem calcular nada em resultados de precificação".
-      // So I remove it from totalFees too.
-      totalFees: (marketplaceCost + finalFixedFee + gatewayCost + paidTrafficCost + adsCostPerSale + pkgCost + (currentMarketplace === 'wordpress' ? wpShippingVal : 0)).toFixed(2),
-      netRevenue: netRevenue.toFixed(2),
-      actualMargin: actualMargin.toFixed(1),
-      recommendedMargin,
-      taxDescription,
-      manualPrice: manualPriceVal,
-      discountApplied: discountApplied, // Keep as number for logic
-      recommendedValue: recommendedValue.toFixed(2),
-      competitor: competitorPriceVal,
-      breakevenCPA: breakevenCPA.toFixed(2),
-      reverseCR: reverseCR.toFixed(2),
-      marginStatus, // Include status for UI coloring
-      emergencyReserve: emergencyReserveVal.toFixed(2),
-      returnRate: returnRateVal,
-      lossPerReturn: (totalCost + adsCostPerSale).toFixed(2) // Estimated Loss = Cost + Pkg + Ads? Or just Total Cost. Using Total Cost + Ads is safer.
-    };
-  };
 
   const calculations = useMemo(() => {
     const cost = parseFloat(costPrice) || 0;
@@ -801,7 +799,7 @@ const DropshippingCalculator = () => {
                 <Label className="text-sm font-semibold text-gray-800">
                   Modalidade
                 </Label>
-                <Select value={operationMode} onValueChange={setOperationMode}>
+                <Select value={operationMode} onValueChange={handleOperationModeChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a modalidade" />
                   </SelectTrigger>
@@ -838,10 +836,9 @@ const DropshippingCalculator = () => {
                   </Label>
                   <Select 
                     value={deliveryMode} 
-                    onValueChange={setDeliveryMode} 
-                    disabled={marketplace === 'wordpress'}
+                    disabled={true}
                   >
-                    <SelectTrigger className={marketplace === 'wordpress' ? 'bg-gray-100' : ''}>
+                    <SelectTrigger className="bg-gray-100 text-gray-500 cursor-not-allowed">
                       <SelectValue placeholder="Selecione a entrega" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1055,7 +1052,7 @@ const DropshippingCalculator = () => {
                 <Label className="text-sm font-semibold text-gray-800">
                   Marketplace
                 </Label>
-                <Select value={marketplace} onValueChange={setMarketplace}>
+                <Select value={marketplace} onValueChange={handleMarketplaceChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o marketplace" />
                   </SelectTrigger>
@@ -1103,14 +1100,14 @@ const DropshippingCalculator = () => {
                     <Button 
                       variant={gatewayBank === 'mercadopago' ? "default" : "outline"}
                       className={`flex-1 text-xs ${gatewayBank === 'mercadopago' ? 'bg-blue-500 hover:bg-blue-600' : ''}`}
-                      onClick={() => { setGatewayBank('mercadopago'); setGatewayMethod('pix'); }}
+                      onClick={() => handleGatewayBankChange('mercadopago')}
                     >
                       Mercado Pago
                     </Button>
                     <Button 
                       variant={gatewayBank === 'nubank' ? "default" : "outline"}
                       className={`flex-1 text-xs ${gatewayBank === 'nubank' ? 'bg-purple-600 hover:bg-purple-700' : ''}`}
-                      onClick={() => { setGatewayBank('nubank'); setGatewayMethod('pix'); }}
+                      onClick={() => handleGatewayBankChange('nubank')}
                     >
                       Nubank
                     </Button>
@@ -1122,21 +1119,21 @@ const DropshippingCalculator = () => {
                           <Button 
                              variant={gatewayMethod === 'pix' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'pix' ? 'bg-blue-100 text-blue-800' : ''}`}
-                             onClick={() => setGatewayMethod('pix')}
+                             onClick={() => handleGatewayMethodChange('pix')}
                           >
                              💠 PIX (0.49%)
                           </Button>
                           <Button 
                              variant={gatewayMethod === 'credit' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'credit' ? 'bg-blue-100 text-blue-800' : ''}`}
-                             onClick={() => setGatewayMethod('credit')}
+                             onClick={() => handleGatewayMethodChange('credit')}
                           >
                              💳 Crédito (4.99%)
                           </Button>
                           <Button 
                              variant={gatewayMethod === 'debit' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'debit' ? 'bg-blue-100 text-blue-800' : ''}`}
-                             onClick={() => setGatewayMethod('debit')}
+                             onClick={() => handleGatewayMethodChange('debit')}
                           >
                              💳 Débito (1.99%)
                           </Button>
@@ -1146,35 +1143,35 @@ const DropshippingCalculator = () => {
                           <Button 
                              variant={gatewayMethod === 'pix' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'pix' ? 'bg-purple-100 text-purple-800' : ''}`}
-                             onClick={() => setGatewayMethod('pix')}
+                             onClick={() => handleGatewayMethodChange('pix')}
                           >
                              💠 PIX (0.49%)
                           </Button>
                           <Button 
                              variant={gatewayMethod === 'credit_sight' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'credit_sight' ? 'bg-purple-100 text-purple-800' : ''}`}
-                             onClick={() => setGatewayMethod('credit_sight')}
+                             onClick={() => handleGatewayMethodChange('credit_sight')}
                           >
                              💳 Crédito à Vista (3.09%)
                           </Button>
                            <Button 
                              variant={gatewayMethod === 'credit' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'credit' ? 'bg-purple-100 text-purple-800' : ''}`}
-                             onClick={() => setGatewayMethod('credit')}
+                             onClick={() => handleGatewayMethodChange('credit')}
                           >
                              💳 Crédito Parc.
                           </Button>
                           <Button 
                              variant={gatewayMethod === 'debit' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'debit' ? 'bg-purple-100 text-purple-800' : ''}`}
-                             onClick={() => setGatewayMethod('debit')}
+                             onClick={() => handleGatewayMethodChange('debit')}
                           >
                              💳 Débito (0.89%)
                           </Button>
                            <Button 
                              variant={gatewayMethod === 'pix_credit' ? "secondary" : "ghost"}
                              className={`text-xs justify-start h-8 ${gatewayMethod === 'pix_credit' ? 'bg-purple-100 text-purple-800' : ''}`}
-                             onClick={() => setGatewayMethod('pix_credit')}
+                             onClick={() => handleGatewayMethodChange('pix_credit')}
                           >
                              💠 Pix no Crédito (1.99%)
                           </Button>
@@ -1190,7 +1187,7 @@ const DropshippingCalculator = () => {
                           min="1" 
                           max="12" 
                           value={gatewayInstallments}
-                          onChange={(e) => setGatewayInstallments(e.target.value)}
+                          onChange={handleGatewayInstallmentsChange}
                           className="h-8 mt-1"
                        />
                        <p className="text-[10px] text-gray-500">Taxa aumenta com parcelas</p>
